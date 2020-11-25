@@ -12,6 +12,15 @@ output:
 
 We've decided to work with SQLite for this practicum. As such, to work with these files you will need SQLite installed on your machine. The data we are using was provided with the practicum
 
+```{r}
+# Libraries needed for processing
+library(RSQLite)
+library("XML")
+library(dplyr)
+library(tibble)
+```
+
+
 ## Part 1
 Create a normalized relational OLTP database and populate it with data from an XML document.
 
@@ -26,12 +35,151 @@ Lucidchart link:
 Realize the relational schema in SQLite (place the CREATE TABLE statements into SQL chunks in your R Notebook).
 
 ```{r}
+DB_NAME <- "pubMed.db"
 
+conn <- dbConnect(RSQLite::SQLite(), DB_NAME)
+```
+
+
+```{r}
+# Since the dataset is small, the database should be re-created at runtime
+drop_table <- function(table_name) {
+    paste("DROP TABLE IF EXISTS ", table_name, ";", sep="")
+}
+
+# Since we are dropping all tables, disable the FK checks
+dbExecute(conn, "PRAGMA foreign_keys = OFF;")
+# Get a list of all tables currently in the database
+table_list <- dbListTables(conn)
+# Drop every table in the database
+for(table in table_list){
+  dbExecute(conn, drop_table(table))
+}
 ```
 
 ```{sql connection=conn}
-
+PRAGMA foreign_keys = ON;
 ```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS ELocType (
+  eType_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  eType TEXT NOT NULL,
+  CONSTRAINT unique_eLocType_eType UNIQUE (eType)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS CategoryLabels (
+  label_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  label TEXT NOT NULL,
+  CONSTRAINT unique_catLab_label UNIQUE (label)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Affiliations (
+  aff_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  aff TEXT NOT NULL,
+  CONSTRAINT unique_aff_aff UNIQUE (aff)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Pagination (
+  pgn_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medlinePgn TEXT NOT NULL,
+  CONSTRAINT unique_pgn_medpgn UNIQUE (medlinePgn)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Languages (
+  lang_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  language TEXT NOT NULL,
+  CONSTRAINT unique_lang_lang UNIQUE (language)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS IsoAbbreviation (
+  abbr_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  abbr TEXT NOT NULL,
+  CONSTRAINT unique_isoAbbr_abbr UNIQUE (abbr)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS MediumType (
+  medium_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medium TEXT NOT NULL,
+  CONSTRAINT unique_med_med UNIQUE (medium)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Countries (
+  country_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  country TEXT NOT NULL,
+  CONSTRAINT unique_country_country UNIQUE (country)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Agencies (
+  agency_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  agency TEXT NOT NULL,
+  CONSTRAINT unique_agency_agency UNIQUE (agency)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Acronyms (
+  acronym_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  acronym TEXT NOT NULL,
+  CONSTRAINT unique_acr_acr UNIQUE (acronym)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS PublicationType (
+  pubType_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pubType TEXT NOT NULL,
+  CONSTRAINT unique_pubType_pubType UNIQUE (pubType)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS PubStatus (
+  status_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  status TEXT NOT NULL,
+  CONSTRAINT unique_pubStatus_status UNIQUE (status)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Date (
+  date_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL,
+  day INTEGER,
+  CONSTRAINT unique_date_yymmdd UNIQUE (year, month, day)
+);
+```
+
 
 
 ### Task 3
