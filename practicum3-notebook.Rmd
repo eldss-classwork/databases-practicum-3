@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS Date (
   date_id INTEGER PRIMARY KEY AUTOINCREMENT,
   year INTEGER NOT NULL,
   month INTEGER NOT NULL,
-  day INTEGER,
+  day INTEGER NOT NULL,
   CONSTRAINT unique_date_yymmdd UNIQUE (year, month, day)
 );
 ```
@@ -312,6 +312,109 @@ CREATE TABLE IF NOT EXISTS IssueList (
   FOREIGN KEY (issue_id) REFERENCES JournalIssue(issue_id),
   FOREIGN KEY (journal_id) REFERENCES Journal(journal_id),
   CONSTRAINT unique_issuelist_issue_jornal UNIQUE (issue_id, journal_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS AbstractText (
+  abText_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  abText Text NOT NULL,
+  label INTEGER,
+  nlmCategory INTEGER,
+  FOREIGN KEY (label) REFERENCES CategoryLabels(label_id),
+  FOREIGN KEY (nlmCategory) REFERENCES CategoryLabels(label_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS AbstractList (
+  abList_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  abText_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  FOREIGN KEY (abText_id) REFERENCES AbstractText(abText_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
+  CONSTRAINT unique_ablist_abstract_art UNIQUE (abText_id, article_id)
+);
+```
+
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Authors (
+  author_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  valid BOOLEAN NOT NULL,
+  lName Text NOT NULL,
+  fName Text NOT NULL,
+  initials Text NOT NULL,
+  aff_id INTEGER,
+  FOREIGN KEY (aff_id) REFERENCES Affiliations(aff_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS AuthorList (
+  authList_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  FOREIGN KEY (author_id) REFERENCES Authors(author_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
+  CONSTRAINT unique_authlist_author_art UNIQUE (author_id, article_id)
+);
+```
+
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Grants (
+  grant_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  grantID Text NOT NULL,
+  acronym_id INTEGER,
+  agency_id INTEGER NOT NULL,
+  country_id INTEGER NOT NULL,
+  FOREIGN KEY (acronym_id) REFERENCES Acronyms(acronym_id),
+  FOREIGN KEY (agency_id) REFERENCES Agencies(agency_id),
+  FOREIGN KEY (country_id) REFERENCES Countries(country_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS GrantList (
+  grantList_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  grant_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  FOREIGN KEY (grant_id) REFERENCES Grants(grant_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
+  CONSTRAINT unique_grantlist_grant_art UNIQUE (abText_id, article_id)
+);
+```
+
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS PubMedDate (
+  pubMedDate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  status INTEGER NOT NULL,
+  date INTEGER NOT NULL,
+  hour INTEGER,
+  minute INTEGER,
+  FOREIGN KEY (status) REFERENCES PubStatus(status_id),
+  FOREIGN KEY (date) REFERENCES Date(date_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS History (
+  history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pubMedDate_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  FOREIGN KEY (pubMedDate_id) REFERENCES AbstractText(pubMedDate_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
+  CONSTRAINT unique_history_date_art UNIQUE (pubMedDate_id, article_id)
 );
 ```
 
