@@ -181,6 +181,143 @@ CREATE TABLE IF NOT EXISTS Date (
 ```
 
 
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS ArticleDate (
+  artDate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  dateType INTEGER NOT NULL,
+  date_id INTEGER NOT NULL,
+  CONSTRAINT unique_artdate_typedate UNIQUE (dateType, date_id),
+  FOREIGN KEY (dateType) REFERENCES MediumType(medium_id),
+  FOREIGN KEY (date_id) REFERENCES Date(date_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Article (
+  article_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pubModel INTEGER NOT NULL,
+  title Text NOT NULL,
+  pgn_id INTEGER NOT NULL,
+  authorListComplete BOOLEAN NOT NULL,
+  lang_id INTEGER NOT NULL,
+  grantListComplete BOOLEAN,
+  artDate_id INTEGER,
+  FOREIGN KEY (pubModel) REFERENCES MediumType(medium_id),
+  FOREIGN KEY (pgn_id) REFERENCES Pagination(pgn_id),
+  FOREIGN KEY (lang_id) REFERENCES Languages(lang_id),
+  FOREIGN KEY (artDate_id) REFERENCES ArticleDate(artDate_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS PubTypeList (
+  pubList_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pubType_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  FOREIGN KEY (pubType_id) REFERENCES PublicationType(pubType_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
+  CONSTRAINT unique_pubTypeList_type_art UNIQUE (pubType_id, article_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS ELocationID (
+  eLoc_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  eType_id INTEGER NOT NULL,
+  valid BOOLEAN NOT NULL,
+  value Text NOT NULL,
+  FOREIGN KEY (eType_id) REFERENCES ELocType(eType_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS ELocList (
+  elList_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  eLoc_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  FOREIGN KEY (eLoc_id) REFERENCES ELocationID(eLoc_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
+  CONSTRAINT unique_eloclist_eLoc_art UNIQUE (eLoc_id, article_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS PubDate (
+  pubDate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  medlineDate BOOLEAN NOT NULL,
+  dateYYMM Text NOT NULL,
+  CONSTRAINT unique_pubDate_med_date UNIQUE (medlineDate, dateYYMM)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS JournalIssue (
+  issue_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  volume INTEGER NOT NULL,
+  issue INTEGER NOT NULL,
+  citedMedium INTEGER NOT NULL,
+  pubDate_id INTEGER NOT NULL,
+  FOREIGN KEY (citedMedium) REFERENCES MediumType(medium_id),
+  FOREIGN KEY (pubDate_id) REFERENCES PubDate(pubDate_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS ArticleList (
+  artList_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL,
+  article_id INTEGER NOT NULL,
+  FOREIGN KEY (issue_id) REFERENCES JournalIssue(issue_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
+  CONSTRAINT unique_artlist_issue_art UNIQUE (issue_id, article_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS ISSN (
+  issn_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issnType INTEGER NOT NULL,
+  value Text NOT NULL,
+  CONSTRAINT unique_issn_typeissn UNIQUE (dateType, value),
+  FOREIGN KEY (dateType) REFERENCES MediumType(medium_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Journal (
+  journal_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title Text NOT NULL,
+  issn_id INTEGER NOT NULL,
+  isoAbbr INTEGER NOT NULL,
+  FOREIGN KEY (issn_id) REFERENCES ISSN(issn_id),
+  FOREIGN KEY (isoAbbr) REFERENCES IsoAbbreviation(abbr_id)
+);
+```
+
+
+```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS IssueList (
+  issueList_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  issue_id INTEGER NOT NULL,
+  journal_id INTEGER NOT NULL,
+  FOREIGN KEY (issue_id) REFERENCES JournalIssue(issue_id),
+  FOREIGN KEY (journal_id) REFERENCES Journal(journal_id),
+  CONSTRAINT unique_issuelist_issue_jornal UNIQUE (issue_id, journal_id)
+);
+```
+
+
+
+
 
 ### Task 3
 Extract and transform the data from the XML and then load into the appropriate tables in the database. You cannot use xmlToDataFrame but instead must parse the XML node by node using a combination of node-by-node tree traversal and XPath. It is not feasible to use XPath to extract all journals, then all authors, etc. as some are missing and won't match up. You will need to iterate through the top-level nodes.
