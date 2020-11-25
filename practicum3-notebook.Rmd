@@ -1,0 +1,90 @@
+---
+title: 'CS5200 Fall 2020: Practicum 3'
+author: "Chandra Davis, Evan Douglass"
+output:
+  pdf_document: default
+  word_document: default
+  html_document:
+    df_print: paged
+---
+
+## Overview
+
+We've decided to work with SQLite for this practicum. As such, to work with these files you will need SQLite installed on your machine. The data we are using was provided with the practicum
+
+## Part 1
+Create a normalized relational OLTP database and populate it with data from an XML document.
+
+### Task 1
+Create a normalized relational schema that contains minimally the following entities: Article, Journal, Author, History. Use the XML document to determine the appropriate attributes (fields/columns) for the entities (tables). While there may be other types of publications in the XML, you only need to deal with articles in journals. Create appropriate primary and foreign keys. Where necessary, add surrogate keys. Include an image of an ERD showing your model in your R Notebook.
+
+Lucidchart link: 
+
+![Task1.1](imgs/OriginalTables.png)
+
+### Task 2
+Realize the relational schema in SQLite (place the CREATE TABLE statements into SQL chunks in your R Notebook).
+
+```{r}
+
+```
+
+```{sql connection=conn}
+
+```
+
+
+### Task 3
+Extract and transform the data from the XML and then load into the appropriate tables in the database. You cannot use xmlToDataFrame but instead must parse the XML node by node using a combination of node-by-node tree traversal and XPath. It is not feasible to use XPath to extract all journals, then all authors, etc. as some are missing and won't match up. You will need to iterate through the top-level nodes.
+
+```{r}
+
+```
+
+
+## Part 2
+Add to the normalized schema fact tables and turn the normalized schema into a de-normalized schema suitable for OLAP.
+
+### Task 1
+Create and populate a star schema with dimension and transaction fact tables. Each row in the fact table will represent one article. Include the image of an updated ERD that contains the fact table and any additional required dimension tables. Populate the star schema in R.
+
+Lucidchart link: 
+
+![Task2.1](imgs/OriginalTables.png)
+
+```{r}
+
+```
+
+
+### Task 2
+In the same schema as the previous step, create and populate a summary fact table that represents number of articles per time period (quarter, year) by author and by journal. Include the image of an updated ERD that contains the fact table. Populate the fact table in R.
+
+Lucidchart link: 
+
+![Task2.2](imgs/OriginalTables.png)
+
+```{r}
+
+```
+
+
+## Part 3
+Use the OLAP star schema to do some (simple) data mining.
+
+### Task 1
+Write queries using your data warehouse to explore whether the publications show a seasonal pattern. Look beyond the pattern of number of publications per season. Adjust your fact tables as needed to support your new queries. If you need to update the fact table, document your changes and your reasons why the changes are needed.
+
+```{r}
+
+```
+
+
+### Task 2
+Either (a) visualize (graph/plot) the data from the previous step using R to explore seasonality and explain what you found, or (b) build a predictive model to forecast the expected number of publications for a quarter. (Note that we do not cover predictive modeling in this course, so if you do not know this from a prior course, then simply create the visualization.)
+
+```{r}
+
+```
+
+
