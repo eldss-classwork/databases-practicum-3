@@ -340,7 +340,6 @@ CREATE TABLE IF NOT EXISTS AbstractList (
 ```
 
 
-
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS Authors (
   author_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -364,7 +363,6 @@ CREATE TABLE IF NOT EXISTS AuthorList (
   CONSTRAINT unique_authlist_author_art UNIQUE (author_id, article_id)
 );
 ```
-
 
 
 ```{sql connection=conn}
@@ -391,7 +389,6 @@ CREATE TABLE IF NOT EXISTS GrantList (
   CONSTRAINT unique_grantlist_grant_art UNIQUE (abText_id, article_id)
 );
 ```
-
 
 
 ```{sql connection=conn}
@@ -426,8 +423,81 @@ CREATE TABLE IF NOT EXISTS History (
 Extract and transform the data from the XML and then load into the appropriate tables in the database. You cannot use xmlToDataFrame but instead must parse the XML node by node using a combination of node-by-node tree traversal and XPath. It is not feasible to use XPath to extract all journals, then all authors, etc. as some are missing and won't match up. You will need to iterate through the top-level nodes.
 
 ```{r}
+# Read the XML file into memory
+file <- xmlParse(file = "pubmed_sample.xml")
 
+# Get the first node
+root <- xmlRoot(file)
 ```
+
+```{r}
+# Categorical tables need to be unique so do not need to go node by node
+# There are 12 categorical attribute tables
+# Created function for duplicate processing
+
+getVector <- function(path, att){
+  # Grab all of the unique genres
+  if(att){
+    values <- unique(xpathSApply(file, path))
+  } 
+  else{
+    values <- unique(xpathSApply(file, path, xmlValue))
+  }
+  
+  return(values)
+}
+
+catTable <- function(path, tablename, att, mult=FALSE){
+  # A few of the categorical tables are made of multiple XML elements/attributes
+  if(mult){
+    values <- c()
+    split <- unlist(strsplit(path, ","))
+    for(i in split){
+      values <- append(values,getVector(i,att))
+    }
+    values <- unique(values)
+  }
+  else {
+    values <- getVector(path, att)
+  }
+  
+  # Turn into a dataframe and add unique ids
+  df_table <- data.frame(values)
+  df_table <- tibble::rowid_to_column(df_table, "id")
+  
+  # Update column names to match table
+  names <- dbGetQuery(conn, 
+                      paste("pragma table_info(",tablename,")",sep=""))[["name"]]
+  colnames(df_table) <- names
+  
+  # Put in database
+  # Append=TRUE is the preferred method because we want to maintain the referential integrity relationships from table creation
+  dbWriteTable(conn, tablename, df_table, append=TRUE)
+  
+  # Return the dataframe for processing FK relationships
+  return(df_table)
+}
+```
+
+```{r}
+# Call function to build all twelve tables
+# Save the dataframes for look-up in other tables
+df_aff <- catTable("//Affiliation", "Affiliations", FALSE)
+df_pgn <- catTable("//MedlinePgn", "Pagination", FALSE)
+df_lang <- catTable("//Language", "Languages", FALSE)
+df_iso <- catTable("//ISOAbbreviation", "IsoAbbreviation", FALSE)
+df_pubType <- catTable("//PublicationType", "PublicationType", FALSE)
+df_country <- catTable("//Country", "Countries", FALSE)
+df_agency <- catTable("//Agency", "Agencies", FALSE)
+df_acr <- catTable("//Acronym", "Acronyms", FALSE)
+df_eIdType <- catTable("//@EIdType", "ELocType", TRUE)
+df_pubStatus <- catTable("//@PubStatus", "PubStatus", TRUE)
+df_labels <- catTable("//@Label,//@NlmCategory", "CategoryLabels", TRUE, TRUE)
+df_mediums <- catTable("//@IssnType,//@CitedMedium,//@PubModel,//@DateType",
+                       "MediumType", TRUE, TRUE)
+```
+
+
 
 
 ## Part 2
