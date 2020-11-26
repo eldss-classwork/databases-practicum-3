@@ -12,12 +12,13 @@ output:
 
 We've decided to work with SQLite for this practicum. As such, to work with these files you will need SQLite installed on your machine. The data we are using was provided with the practicum
 
-```{r}
+```{r, message=FALSE}
 # Libraries needed for processing
 library(RSQLite)
 library("XML")
 library(dplyr)
 library(tibble)
+library(sjmisc)
 ```
 
 
@@ -53,7 +54,9 @@ dbExecute(conn, "PRAGMA foreign_keys = OFF;")
 table_list <- dbListTables(conn)
 # Drop every table in the database
 for(table in table_list){
-  dbExecute(conn, drop_table(table))
+  if(!str_contains(table,"sqlite")){
+    dbExecute(conn, drop_table(table))
+  }
 }
 ```
 
@@ -286,8 +289,8 @@ CREATE TABLE IF NOT EXISTS ISSN (
   issn_id INTEGER PRIMARY KEY AUTOINCREMENT,
   issnType INTEGER NOT NULL,
   value Text NOT NULL,
-  CONSTRAINT unique_issn_typeissn UNIQUE (dateType, value),
-  FOREIGN KEY (dateType) REFERENCES MediumType(medium_id)
+  CONSTRAINT unique_issn_typeissn UNIQUE (issnType, value),
+  FOREIGN KEY (issnType) REFERENCES MediumType(medium_id)
 );
 ```
 
@@ -386,7 +389,7 @@ CREATE TABLE IF NOT EXISTS GrantList (
   article_id INTEGER NOT NULL,
   FOREIGN KEY (grant_id) REFERENCES Grants(grant_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
-  CONSTRAINT unique_grantlist_grant_art UNIQUE (abText_id, article_id)
+  CONSTRAINT unique_grantlist_grant_art UNIQUE (grant_id, article_id)
 );
 ```
 
