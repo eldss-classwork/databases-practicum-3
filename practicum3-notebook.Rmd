@@ -199,6 +199,7 @@ CREATE TABLE IF NOT EXISTS Article (
   pubModel INTEGER NOT NULL,
   title Text NOT NULL,
   pgn_id INTEGER NOT NULL,
+  copyright Text,
   authorListComplete BOOLEAN NOT NULL,
   lang_id INTEGER NOT NULL,
   grantListComplete BOOLEAN,
@@ -590,7 +591,10 @@ for(i in 1:xmlSize(root)){
 ```
 
 ```{r}
-journalDF <- function(num, node){}
+journalDF <- function(num, node){
+  print("journal")
+  return(data.frame("article_id"=num))
+}
 ```
 
 ```{r}
@@ -605,27 +609,110 @@ eLocDF <- function(num, node){
 ```
 
 ```{r}
-abstractDF <- function(num, node){}
+abstractDF <- function(num, node){
+  for(i in 1:xmlSize(node)){
+    print(xmlName(node[[i]]))
+  }
+  
+  return(data.frame("article_id"=num))
+}
 ```
 
 ```{r}
-authorDF <- function(num, node){}
+authorDF <- function(num, node){
+  for(i in 1:xmlSize(node)){
+    print(xmlName(node[[i]]))
+  }
+  
+  return(data.frame("article_id"=num))
+}
 ```
 
 ```{r}
-pubTypeDF <- function(num, node){}
+pubTypeDF <- function(num, node){
+  type <- c()
+  for(i in 1:xmlSize(node)){
+    type <- append(type, xmlValue(node[[i]]))
+  }
+  
+  return(data.frame("article_id"=num, type))
+}
 ```
 
 ```{r}
-grantDF <- function(num, node){}
+grantDF <- function(num, node){
+  id <- c()
+  ac <- c()
+  ag <- c()
+  ctry <- c()
+  
+  for(i in 1:xmlSize(node)){
+    newNode <- node[[i]]
+    for(j in 1:xmlSize(newNode)){
+      name <- xmlName(newNode[[j]])
+      if(name == "GrantID"){
+        id <- append(id, xmlValue(newNode))
+      }
+      else if(name == "Acronym"){
+        ac <- append(ac, xmlValue(newNode))
+      }
+      else if(name == "Agency"){
+        ag <- append(ag, as.numeric(xmlValue(newNode)))
+      }
+      else if(name == "Country"){
+        ctry <- append(ctry, xmlValue(newNode))
+      }
+      else {
+        print(paste("Vector not created for:", name))
+      }
+    }
+    
+    # Check for missing values on all vectors
+    id <- checkSize(i,id)
+    ac <- checkSize(i,ac)
+    ag <- checkSize(i,ag)
+    ctry <- checkSize(i,ctry)
+  }
+  
+  grant_df <- data.frame("article_id"=num, id, ac, ag, ctry)
+  return(grant_df)
+}
 ```
 
 ```{r}
-artDateDF <- function(num, node){}
+artDateDF <- function(num, node){
+  type <- xmlGetAttr(node,"DateType",NA)
+  year <- xmlValue(node)
+  month <- xmlValue(node)
+  day <- xmlValue(node)
+  
+  artDate_df <- data.frame("article_id"=num, type, year, month, day)
+  return(artDate_df)
+}
 ```
 
 ```{r}
 articleDF <- function(num, node){}
+```
+
+```{r}
+# Confirmed only one instance of article for every PubMedArticle
+for(i in 1:xmlSize(root)){
+  newRoot <- root[[i]][[1]]
+  for(j in 1:xmlSize(newRoot)){
+    name <- xmlName(newRoot[[j]])
+    if(name=="Article"){
+      article <- newRoot[[j]]
+      # for(k in 1:xmlSize(article)){
+      #   child <- article[[k]]
+      #   name <- xmlName(child)
+      #   if(name=="ArticleDate"){
+      #     print(paste("art date",xmlSize(child)))
+      #   }
+      # }
+    }
+  }
+}
 ```
 
 ```{r}
@@ -636,62 +723,81 @@ aListC <- c()
 gListC <- c()
 lang <- c()
 model <- c()
+copyright <-c()
 
-# Create an empty dataframe to match dataframe from eLoc function
+# Create an empty dataframe to match dataframes from above functions
+df_journal <- data.frame("article_id"=c())
 df_eLoc <- data.frame("article_id"=c(), "valid"=c(), "type"=c(), "value"=c())
+df_abstract <- data.frame("article_id"=c())
+df_author <- data.frame("article_id"=c())
+df_grant <- data.frame("article_id"=c(), "id"=c(), "ac"=c(), "ag"=c(),
+                       "ctry"=c())
+df_pubTypeList <- data.frame("article_id"=c(), "type"=c())
+df_artDate <- data.frame("article_id"=c(), "type"=c(), "year"=c(),
+                         "month"=c(), "day"=c())
 
-for(i in 1:xmlSize(root)){
-  newRoot <- root[[i]][[1]]
-  for(j in 1:xmlSize(newRoot)){
-    name <- xmlName(newRoot[[j]])
-    if(name=="Article"){
-      id <- append(id,i)
-      model <- append(model,xmlGetAttr(node,"PubModel",NA))
-      article <- newRoot[[j]]
-      for(k in 1:xmlSize(article)){
-        child <- article[[k]]
-        name <- xmlName(child)
-        if(name=="Journal"){
-          print("more needed")
-        }
-        else if(name=="ArticleTitle"){
-          title <- append(title,xmlValue(child))
-        }
-        else if(name=="Pagination"){
-          pagination <- append(pagination,xmlValue(child[[1]]))
-        }
-        else if(name=="ELocationID"){
-          df_eLoc <- rbind(df_eLoc,eLocDF(i,child))
-        }
-        else if(name=="Abstract"){
-          print("more needed")
-        }
-        else if(name=="AuthorList"){
-          aListC <- append(aListC,xmlGetAttr(node,"CompleteYN",NA))
-          print("more needed")
-        }
-        else if(name=="Language"){
-          lang <- append(lang,xmlValue(child))
-          print("more needed")
-        }
-        else if(name=="GrantList"){
-          gListC <- append(gListC,xmlGetAttr(node,"CompleteYN",NA))
-          print("more needed")
-        }
-        else if(name=="PublicationTypeList"){
-          print("more needed")
-        }
-        else if(name=="ArticleDate"){
-          print("more needed")
-        }
-        else {
-          print(paste("Missing tables for",name))
-        }
-      }
-    }
+article <- root[[2]][[1]][[5]]
+i<-1
+id <- append(id,i)
+model <- append(model,xmlGetAttr(article,"PubModel",NA))
+for(k in 1:xmlSize(article)){
+  child <- article[[k]]
+  name <- xmlName(child)
+  if(name=="Journal"){
+    df_journal <- rbind(df_journal,journalDF(i,child))
   }
+  else if(name=="ArticleTitle"){
+    title <- append(title,xmlValue(child))
+  }
+  else if(name=="Pagination"){
+    pagination <- append(pagination,xmlValue(child[[1]]))
+  }
+  else if(name=="ELocationID"){
+    df_eLoc <- rbind(df_eLoc,eLocDF(i,child))
+  }
+  else if(name=="Abstract"){
+    copyright <- append(copyright,xpathSApply(
+                                    child,"CopyrightInformation", xmlValue))
+    df_abstract <- rbind(df_abstract,abstractDF(i,child))
+  }
+  else if(name=="AuthorList"){
+    aListC <- append(aListC,xmlGetAttr(child,"CompleteYN",NA))
+    df_author <- rbind(df_author,authorDF(i,child))
+  }
+  else if(name=="Language"){
+    lang <- append(lang,xmlValue(child))
+  }
+  else if(name=="GrantList"){
+    gListC <- append(gListC,xmlGetAttr(child,"CompleteYN",NA))
+    df_grant <- rbind(df_grant,grantDF(i,child))
+  }
+  else if(name=="PublicationTypeList"){
+    df_pubTypeList <- rbind(df_pubTypeList,pubTypeDF(i,child))
+  }
+  else if(name=="ArticleDate"){
+    df_artDate <- rbind(df_artDate,artDateDF(i,child))
+  }
+  else {
+    print(paste("Missing tables for",name))
+  }
+  
+  # Check for missing values on all vectors
+  id <- checkSize(i,id)
+  title <- checkSize(i,title)
+  pagination <- checkSize(i,pagination)
+  aListC <- checkSize(i,aListC)
+  gListC <- checkSize(i,gListC)
+  lang <- checkSize(i,lang)
+  model <- checkSize(i,model)
+  copyright <- checkSize(i, copyright)
 }
 ```
+
+```{r}
+xpathSApply(article,"Abstract/CopyrightInformation", xmlValue)
+```
+
+
 
 
 
