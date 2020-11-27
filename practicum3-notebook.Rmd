@@ -610,21 +610,71 @@ eLocDF <- function(num, node){
 
 ```{r}
 abstractDF <- function(num, node){
+  cat <- c()
+  lab <- c()
+  text <- c()
+  
   for(i in 1:xmlSize(node)){
-    print(xmlName(node[[i]]))
+    newNode <- node[[i]]
+    name <- xmlName(newNode)
+    if(name=="AbstractText"){
+      cat <- append(cat, xmlGetAttr(newNode,"NlmCategory",NA))
+      lab <- append(lab, xmlGetAttr(newNode,"Label",NA))
+      text <- append(text, xmlValue(newNode))
+      
+      # Check for missing values on all vectors
+      cat <- checkSize(i,cat)
+      lab <- checkSize(i,lab)
+      text <- checkSize(i,text)
+    }
   }
   
-  return(data.frame("article_id"=num))
+  abstract_df <- data.frame("article_id"=num, cat, lab, text)
+  return(abstract_df)
 }
 ```
 
 ```{r}
 authorDF <- function(num, node){
+  valid <- c()
+  last <- c()
+  first <- c()
+  init <- c()
+  aff <- c()
+  
   for(i in 1:xmlSize(node)){
-    print(xmlName(node[[i]]))
+    newNode <- node[[i]]
+    valid <- append(valid, xmlGetAttr(newNode,"ValidYN",NA))
+    for(j in 1:xmlSize(newNode)){
+      child <- newNode[[j]]
+      name <- xmlName(child)
+      if(name == "LastName"){
+        last <- append(last, xmlValue(child))
+      }
+      else if(name == "ForeName"){
+        first <- append(first, xmlValue(child))
+      }
+      else if(name == "Initials"){
+        init <- append(init, xmlValue(child))
+      }
+      else if(name == "Affiliation"){
+        aff <- append(aff, xmlValue(child))
+      }
+      else {
+        print(paste("Vector not created for:", name))
+      }
+    }
+    
+    # Check for missing values on all vectors
+    valid <- checkSize(i,valid)
+    last <- checkSize(i,last)
+    first <- checkSize(i,first)
+    init <- checkSize(i, init)
+    aff <- checkSize(i,aff)
   }
   
-  return(data.frame("article_id"=num))
+  author_df <- data.frame("article_id"=num, valid, last, first, init, aff)
+  return(author_df)
 }
 ```
 
@@ -649,18 +699,19 @@ grantDF <- function(num, node){
   for(i in 1:xmlSize(node)){
     newNode <- node[[i]]
     for(j in 1:xmlSize(newNode)){
-      name <- xmlName(newNode[[j]])
+      child <- newNode[[j]]
+      name <- xmlName(child)
       if(name == "GrantID"){
-        id <- append(id, xmlValue(newNode))
+        id <- append(id, xmlValue(child))
       }
       else if(name == "Acronym"){
-        ac <- append(ac, xmlValue(newNode))
+        ac <- append(ac, xmlValue(child))
       }
       else if(name == "Agency"){
-        ag <- append(ag, as.numeric(xmlValue(newNode)))
+        ag <- append(ag, as.numeric(xmlValue(child)))
       }
       else if(name == "Country"){
-        ctry <- append(ctry, xmlValue(newNode))
+        ctry <- append(ctry, xmlValue(child))
       }
       else {
         print(paste("Vector not created for:", name))
@@ -689,10 +740,6 @@ artDateDF <- function(num, node){
   artDate_df <- data.frame("article_id"=num, type, year, month, day)
   return(artDate_df)
 }
-```
-
-```{r}
-articleDF <- function(num, node){}
 ```
 
 ```{r}
@@ -728,8 +775,9 @@ copyright <-c()
 # Create an empty dataframe to match dataframes from above functions
 df_journal <- data.frame("article_id"=c())
 df_eLoc <- data.frame("article_id"=c(), "valid"=c(), "type"=c(), "value"=c())
-df_abstract <- data.frame("article_id"=c())
-df_author <- data.frame("article_id"=c())
+df_abstract <- data.frame("article_id"=c(), "cat"=c(), "lab"=c(), "text"=c())
+df_author <- data.frame("article_id"=c(), "valid"=c(), "last"=c(),
+                        "first"=c(), "init"=c(), "aff"=c())
 df_grant <- data.frame("article_id"=c(), "id"=c(), "ac"=c(), "ag"=c(),
                        "ctry"=c())
 df_pubTypeList <- data.frame("article_id"=c(), "type"=c())
