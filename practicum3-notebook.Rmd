@@ -12,7 +12,7 @@ output:
 
 We've decided to work with SQLite for this practicum. As such, to work with these files you will need SQLite installed on your machine. The data we are using was provided with the practicum
 
-```{r, message=FALSE}
+```{r, warning=FALSE}
 # Libraries needed for processing
 library(RSQLite)
 library("XML")
@@ -42,7 +42,7 @@ conn <- dbConnect(RSQLite::SQLite(), DB_NAME)
 ```
 
 
-```{r}
+```{r, results="hide"}
 # Since the dataset is small, the database should be re-created at runtime
 drop_table <- function(table_name) {
     paste("DROP TABLE IF EXISTS ", table_name, ";", sep="")
@@ -58,10 +58,7 @@ for(table in table_list){
     dbExecute(conn, drop_table(table))
   }
 }
-```
-
-```{sql connection=conn}
-PRAGMA foreign_keys = ON;
+dbExecute(conn, "PRAGMA foreign_keys = ON;")
 ```
 
 
@@ -425,7 +422,7 @@ CREATE TABLE IF NOT EXISTS History (
 ### Task 3
 Extract and transform the data from the XML and then load into the appropriate tables in the database. You cannot use xmlToDataFrame but instead must parse the XML node by node using a combination of node-by-node tree traversal and XPath. It is not feasible to use XPath to extract all journals, then all authors, etc. as some are missing and won't match up. You will need to iterate through the top-level nodes.
 
-```{r}
+```{r, warning=FALSE}
 # Read the XML file into memory
 file <- xmlParse(file = "pubmed_sample.xml")
 
@@ -433,7 +430,7 @@ file <- xmlParse(file = "pubmed_sample.xml")
 root <- xmlRoot(file)
 ```
 
-```{r}
+```{r, warning=FALSE}
 # Categorical tables need to be unique so do not need to go node by node
 # There are 12 categorical attribute tables
 # Created function for duplicate processing
@@ -450,6 +447,23 @@ getVector <- function(path, att){
   return(values)
 }
 
+dfToDatabase <- function(df, tablename){
+  # Add unique ids
+  df_table <- tibble::rowid_to_column(df, "id")
+  
+  # Update column names to match table
+  names <- dbGetQuery(conn, 
+              paste("pragma table_info(",tablename,")",sep=""))[["name"]]
+  colnames(df_table) <- names
+  
+  # Put in database
+  # Append=TRUE is the preferred method because we want to maintain the referential integrity relationships from table creation
+  dbWriteTable(conn, tablename, df_table, append=TRUE)
+  
+  # Return the dataframe for processing FK relationships
+  return(df_table)
+}
+
 catTable <- function(path, tablename, att, mult=FALSE){
   # A few of the categorical tables are made of multiple XML elements/attributes
   if(mult){
@@ -464,21 +478,9 @@ catTable <- function(path, tablename, att, mult=FALSE){
     values <- getVector(path, att)
   }
   
-  # Turn into a dataframe and add unique ids
   df_table <- data.frame(values)
-  df_table <- tibble::rowid_to_column(df_table, "id")
   
-  # Update column names to match table
-  names <- dbGetQuery(conn, 
-                      paste("pragma table_info(",tablename,")",sep=""))[["name"]]
-  colnames(df_table) <- names
-  
-  # Put in database
-  # Append=TRUE is the preferred method because we want to maintain the referential integrity relationships from table creation
-  dbWriteTable(conn, tablename, df_table, append=TRUE)
-  
-  # Return the dataframe for processing FK relationships
-  return(df_table)
+  return(dfToDatabase(df_table,tablename))
 }
 ```
 
@@ -498,6 +500,197 @@ df_pubStatus <- catTable("//@PubStatus", "PubStatus", TRUE)
 df_labels <- catTable("//@Label,//@NlmCategory", "CategoryLabels", TRUE, TRUE)
 df_mediums <- catTable("//@IssnType,//@CitedMedium,//@PubModel,//@DateType",
                        "MediumType", TRUE, TRUE)
+```
+
+```{r}
+# Function to check for missing values
+# Will add a NULL value to the vector if the data does not exist
+checkSize <- function(num, df){
+  if(length(df) < num){
+    return(append(df,NA))
+  }
+  else {
+    return(df)
+  }
+}
+```
+
+
+```{r}
+# Function processes the history XML element
+# Uses the article number for tying back to the original article
+histDF <- function(art, node){
+  status <- c()
+  year <- c()
+  month <- c()
+  day <- c()
+  hour <- c()
+  minute <- c()
+  
+  for(i in 1:xmlSize(node)){
+    newNode <- node[[i]]
+    # Status is an attribute and values are obtained differently
+    status <- append(status,xmlGetAttr(newNode,"PubStatus",NA))
+    for(j in 1:xmlSize(newNode)){
+      child <- newNode[[j]]
+      name <- xmlName(child)
+      
+      # Add to the appropriate vector depending on child name
+      if(name == "Year"){
+        year <- append(year, xmlValue(child))
+      }
+      else if(name == "Month"){
+        month <- append(month, xmlValue(child))
+      }
+      else if(name == "Day"){
+        day <- append(day, as.numeric(xmlValue(child)))
+      }
+      else if(name == "Hour"){
+        hour <- append(hour, xmlValue(child))
+      }
+      else if(name == "Minute"){
+        minute <- append(minute, as.numeric(xmlValue(child)))
+      }
+      else {
+        print(paste("Vector not created for:", name))
+      }
+    }
+    
+    # Check for missing values on all vectors
+    status <- checkSize(i,status)
+    year <- checkSize(i,year)
+    month <- checkSize(i,month)
+    day <- checkSize(i,day)
+    hour <- checkSize(i,hour)
+    minute <- checkSize(i,minute)
+  }
+  
+  hist_df <- data.frame("article_id"=art, 
+                        status, year, month, day, hour, minute)
+  return(hist_df)
+}
+
+# Create an empty dataframe to match dataframe from function
+df_pmDate <- data.frame("article_id"=c(), "status"=c(), 
+                      "year"=c(), "month"=c(), "day"=c(), "hour"=c(),
+                      "minute"=c())
+
+# Confirmed only one instance of history for every article
+# Goes through every top level article
+# Creates a combined dataframe for tables relating to the history
+for(i in 1:xmlSize(root)){
+  newRoot <- root[[i]][[2]]
+  for(j in 1:xmlSize(newRoot)){
+    name <- xmlName(newRoot[[j]])
+    if(name=="History"){
+      df_pmDate <- rbind(df_pmDate,histDF(i,newRoot[[j]]))
+    }
+  }
+}
+```
+
+```{r}
+journalDF <- function(num, node){}
+```
+
+```{r}
+eLocDF <- function(num, node){
+  valid <- xmlGetAttr(node,"ValidYN",NA)
+  type <- xmlGetAttr(node,"EIdType",NA)
+  value <- xmlValue(node)
+  
+  eLoc_df <- data.frame("article_id"=num, valid, type, value)
+  return(eLoc_df)
+}
+```
+
+```{r}
+abstractDF <- function(num, node){}
+```
+
+```{r}
+authorDF <- function(num, node){}
+```
+
+```{r}
+pubTypeDF <- function(num, node){}
+```
+
+```{r}
+grantDF <- function(num, node){}
+```
+
+```{r}
+artDateDF <- function(num, node){}
+```
+
+```{r}
+articleDF <- function(num, node){}
+```
+
+```{r}
+id <- c()
+title <- c()
+pagination <-c()
+aListC <- c()
+gListC <- c()
+lang <- c()
+model <- c()
+
+# Create an empty dataframe to match dataframe from eLoc function
+df_eLoc <- data.frame("article_id"=c(), "valid"=c(), "type"=c(), "value"=c())
+
+for(i in 1:xmlSize(root)){
+  newRoot <- root[[i]][[1]]
+  for(j in 1:xmlSize(newRoot)){
+    name <- xmlName(newRoot[[j]])
+    if(name=="Article"){
+      id <- append(id,i)
+      model <- append(model,xmlGetAttr(node,"PubModel",NA))
+      article <- newRoot[[j]]
+      for(k in 1:xmlSize(article)){
+        child <- article[[k]]
+        name <- xmlName(child)
+        if(name=="Journal"){
+          print("more needed")
+        }
+        else if(name=="ArticleTitle"){
+          title <- append(title,xmlValue(child))
+        }
+        else if(name=="Pagination"){
+          pagination <- append(pagination,xmlValue(child[[1]]))
+        }
+        else if(name=="ELocationID"){
+          df_eLoc <- rbind(df_eLoc,eLocDF(i,child))
+        }
+        else if(name=="Abstract"){
+          print("more needed")
+        }
+        else if(name=="AuthorList"){
+          aListC <- append(aListC,xmlGetAttr(node,"CompleteYN",NA))
+          print("more needed")
+        }
+        else if(name=="Language"){
+          lang <- append(lang,xmlValue(child))
+          print("more needed")
+        }
+        else if(name=="GrantList"){
+          gListC <- append(gListC,xmlGetAttr(node,"CompleteYN",NA))
+          print("more needed")
+        }
+        else if(name=="PublicationTypeList"){
+          print("more needed")
+        }
+        else if(name=="ArticleDate"){
+          print("more needed")
+        }
+        else {
+          print(paste("Missing tables for",name))
+        }
+      }
+    }
+  }
+}
 ```
 
 
