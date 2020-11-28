@@ -861,9 +861,13 @@ for(i in 1:xmlSize(root)){
           df_eLoc <- rbind(df_eLoc,eLocDF(i,child))
         }
         else if(name=="Abstract"){
-          ## COPYRIGHT IS NOT WORKING!
-          copyright <- append(copyright,xpathSApply(
-                                      child,"CopyrightInformation", xmlValue))
+          value <- xpathSApply(child,"CopyrightInformation", xmlValue)
+          if(class(value)=="list"){
+            copyright <- append(copyright,NA)
+          }
+          else {
+            copyright <- append(copyright,value)
+          }
           df_abstract <- rbind(df_abstract,abstractDF(i,child))
         }
         else if(name=="AuthorList"){
