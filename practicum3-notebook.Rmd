@@ -16,6 +16,7 @@ We've decided to work with SQLite for this practicum. As such, to work with thes
 # Libraries needed for processing
 library(RSQLite)
 library("XML")
+library(sqldf)
 library(dplyr)
 library(tibble)
 library(sjmisc)
@@ -411,7 +412,7 @@ CREATE TABLE IF NOT EXISTS History (
   history_id INTEGER PRIMARY KEY AUTOINCREMENT,
   article_id INTEGER NOT NULL,
   pubMedDate_id INTEGER NOT NULL,
-  FOREIGN KEY (pubMedDate_id) REFERENCES AbstractText(pubMedDate_id),
+  FOREIGN KEY (pubMedDate_id) REFERENCES PubMedDate(pubMedDate_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_history_date_art UNIQUE (pubMedDate_id, article_id)
 );
@@ -1021,7 +1022,7 @@ df_abstract <- dfToDatabase(df_abstract,"AbstractText",FALSE)
 df_abstractList <- dfToDatabase(df_abstractList,"AbstractList",TRUE)
 ```
 
-### Need to adjust for multi-column FK search!!!
+
 ```{r}
 # Replace FK attributes
 df_grant <- fkReplacement(df_acr,df_grant,2,3,"acronym")
@@ -1049,13 +1050,13 @@ df_grant <- dfToDatabase(df_grant,"Grants",FALSE)
 df_grantList <- dfToDatabase(df_grantList,"GrantList",TRUE)
 ```
 
-### Need to adjust for multi-column FK search!!!
+
 ```{r}
 # Replace FK attributes
 df_author <- fkReplacement(df_aff,df_author,2,6,"aff")
 
 # Copy to bridge list for multi-column FK check
-df_authorList <- df_author
+df_dupe <- df_author
 
 # Remove unneeded column from authors
 df_author$article_id <- NULL
@@ -1065,6 +1066,18 @@ df_author <- unique(df_author)
 
 # Add the values to the database
 df_author <- dfToDatabase(df_author,"Authors",TRUE)
+
+# Find the FK ids based on the multi-column attributes
+df_authorList <- sqldf("select article_id, author_id 
+      from df_dupe al 
+      join df_author au 
+      on (au.lName=al.last and 
+          au.fName=al.first and 
+          au.initials=al.init and 
+          (au.aff_id=al.aff_id or 
+          (au.aff_id is null and al.aff_id is null)))")
+
+# Add the values to the database
 df_authorList <- dfToDatabase(df_authorList,"AuthorList",TRUE)
 ```
 
@@ -1083,9 +1096,27 @@ df_pubDate <- dfToDatabase(df_pubDate,"PubDate",TRUE)
 # Grab the needed columns
 df_jIssue <- df_journal[,c(4,5,6,7,8)]
 # Replace FK attributes
-df_jIssue <- fkReplacement(df_mediums,df_jIssue,2,1,"medium")
+df_dupe <- fkReplacement(df_mediums,df_jIssue,2,1,"medium")
+
+# Find the FK ids based on the multi-column attributes
+df_jIssue <- sqldf("select volume, issue, medium_id, pubDate_id
+      from df_dupe jI 
+      join df_pubDate pd 
+      on (med=medlineDate and 
+          date=dateYYMM)")
+
 # Add the values to the database
 df_jIssue <- dfToDatabase(df_jIssue,"JournalIssue",TRUE)
+```
+
+
+```{r}
+# There is currently a 1:1 relationship between article and journal/issue
+# Relational database was built for future expansion so it was M:M
+# The bridge table ArticleList will resolve the potential future M:M but currently is 1:1
+df_artList <- data.frame("art"=df_journal[,c(0,1)],"issue"=df_jIssue[,c(0,1)])
+# Add the values to the database
+df_artList <- dfToDatabase(df_artList,"ArticleList",TRUE)
 ```
 
 
@@ -1101,6 +1132,34 @@ df_issn <- dfToDatabase(df_issn,"ISSN",TRUE)
 ```
 
 
+```{r}
+# Grab the needed columns
+df_dupe <- df_journal[,c(2,3,9,10)]
+# Replace FK attributes
+df_dupe <- fkReplacement(df_iso,df_dupe,2,4,"abbr")
+df_dupe <- fkReplacement(df_mediums,df_dupe,2,1,"medium")
+
+# Find the FK ids based on the multi-column attributes
+df_journ <- sqldf("select title, issn_id, abbr_id
+      from df_dupe jo 
+      join df_issn issn 
+      on (issn=value and 
+          medium_id=issnType)")
+
+# Add the values to the database
+df_journ <- dfToDatabase(df_journ,"Journal",TRUE)
+```
+
+
+```{r}
+# There is currently a 1:1 relationship between issue and journal
+# Relational database was built for future expansion so it was M:M
+# The bridge table IssueList will resolve the potential future M:M but currently is 1:1
+df_issueList <- data.frame("issue"=df_jIssue[,c(0,1)],"journ"=df_journ[,c(0,1)])
+# Add the values to the database
+df_issueList <- dfToDatabase(df_issueList,"IssueList",TRUE)
+```
+
 
 ```{r}
 # The Date table contains data from two tables: ArticleDate and PubMedDate
@@ -1113,6 +1172,57 @@ df_date <- unique(df_date)
 df_date <- dfToDatabase(df_date,"Date",TRUE)
 ```
 
+
+```{r}
+# Replace FK attributes
+df_dupe <- fkReplacement(df_mediums,df_artDate,2,2,"medium")
+
+# Find the FK ids based on the multi-column attributes
+df_artDate <- sqldf("select article_id, medium_id, date_id
+      from df_dupe ad 
+      join df_date date 
+      on (ad.year=date.year and 
+          ad.month=date.month and 
+          ad.day=date.day)")
+
+# Add the values to the database
+df_artDate <- dfToDatabase(df_artDate,"ArticleDate",TRUE)
+```
+
+
+```{r}
+# Replace FK attributes
+df_dupe <- fkReplacement(df_pubStatus,df_pmDate,2,2,"status")
+
+# Find the FK ids based on the multi-column attributes
+df_history <- sqldf("select article_id, status_id, date_id, hour, minute
+      from df_dupe pm 
+      join df_date date 
+      on (pm.year=date.year and 
+          pm.month=date.month and 
+          pm.day=date.day)")
+
+# Determine columns for just the pub med table
+df_pmDate <- df_history[,c(2,3,4,5)]
+
+# Add the values to the database
+df_pmDate <- dfToDatabase(df_pmDate,"PubMedDate",TRUE)
+
+# Adjust the history dataframe to reference pubMed_id
+df_dupe <- df_history
+df_history <- sqldf("select article_id, pubMedDate_id
+      from df_dupe hi 
+      join df_pmDate pm 
+      on (hi.status_id=pm.status and 
+          hi.date_id=pm.date  and 
+          (hi.hour=pm.hour or 
+          (hi.hour is null and pm.hour is null)) and 
+          (hi.minute=pm.minute or 
+          (hi.minute is null and pm.minute is null)))")
+
+# Add the values to the database
+df_history <- dfToDatabase(df_history,"History",TRUE)
+```
 
 
 ## Part 2
