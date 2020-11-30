@@ -182,11 +182,29 @@ CREATE TABLE IF NOT EXISTS Date (
 
 
 ```{sql connection=conn}
+CREATE TABLE IF NOT EXISTS Article (
+  article_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pubModel INTEGER NOT NULL,
+  title Text NOT NULL,
+  pgn_id INTEGER NOT NULL,
+  authorListComplete BOOLEAN NOT NULL,
+  lang_id INTEGER NOT NULL,
+  grantListComplete BOOLEAN,
+  copyright Text,
+  FOREIGN KEY (pubModel) REFERENCES MediumType(medium_id),
+  FOREIGN KEY (pgn_id) REFERENCES Pagination(pgn_id),
+  FOREIGN KEY (lang_id) REFERENCES Languages(lang_id)
+);
+```
+
+
+```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS ArticleDate (
   artDate_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  article_id INTEGER NOT NULL,
   dateType INTEGER NOT NULL,
   date_id INTEGER NOT NULL,
-  CONSTRAINT unique_artdate_typedate UNIQUE (dateType, date_id),
+  FOREIGN KEY (article_id) REFERENCES Article(article_id),
   FOREIGN KEY (dateType) REFERENCES MediumType(medium_id),
   FOREIGN KEY (date_id) REFERENCES Date(date_id)
 );
@@ -194,29 +212,10 @@ CREATE TABLE IF NOT EXISTS ArticleDate (
 
 
 ```{sql connection=conn}
-CREATE TABLE IF NOT EXISTS Article (
-  article_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  pubModel INTEGER NOT NULL,
-  title Text NOT NULL,
-  pgn_id INTEGER NOT NULL,
-  copyright Text,
-  authorListComplete BOOLEAN NOT NULL,
-  lang_id INTEGER NOT NULL,
-  grantListComplete BOOLEAN,
-  artDate_id INTEGER,
-  FOREIGN KEY (pubModel) REFERENCES MediumType(medium_id),
-  FOREIGN KEY (pgn_id) REFERENCES Pagination(pgn_id),
-  FOREIGN KEY (lang_id) REFERENCES Languages(lang_id),
-  FOREIGN KEY (artDate_id) REFERENCES ArticleDate(artDate_id)
-);
-```
-
-
-```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS PubTypeList (
   pubList_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  pubType_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
+  pubType_id INTEGER NOT NULL,
   FOREIGN KEY (pubType_id) REFERENCES PublicationType(pubType_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_pubTypeList_type_art UNIQUE (pubType_id, article_id)
@@ -238,8 +237,8 @@ CREATE TABLE IF NOT EXISTS ELocationID (
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS ELocList (
   elList_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  eLoc_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
+  eLoc_id INTEGER NOT NULL,
   FOREIGN KEY (eLoc_id) REFERENCES ELocationID(eLoc_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_eloclist_eLoc_art UNIQUE (eLoc_id, article_id)
@@ -273,8 +272,8 @@ CREATE TABLE IF NOT EXISTS JournalIssue (
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS ArticleList (
   artList_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  issue_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
+  issue_id INTEGER NOT NULL,
   FOREIGN KEY (issue_id) REFERENCES JournalIssue(issue_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_artlist_issue_art UNIQUE (issue_id, article_id)
@@ -285,8 +284,8 @@ CREATE TABLE IF NOT EXISTS ArticleList (
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS ISSN (
   issn_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  issnType INTEGER NOT NULL,
   value Text NOT NULL,
+  issnType INTEGER NOT NULL,
   CONSTRAINT unique_issn_typeissn UNIQUE (issnType, value),
   FOREIGN KEY (issnType) REFERENCES MediumType(medium_id)
 );
@@ -332,8 +331,8 @@ CREATE TABLE IF NOT EXISTS AbstractText (
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS AbstractList (
   abList_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  abText_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
+  abText_id INTEGER NOT NULL,
   FOREIGN KEY (abText_id) REFERENCES AbstractText(abText_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_ablist_abstract_art UNIQUE (abText_id, article_id)
@@ -349,7 +348,8 @@ CREATE TABLE IF NOT EXISTS Authors (
   fName Text NOT NULL,
   initials Text NOT NULL,
   aff_id INTEGER,
-  FOREIGN KEY (aff_id) REFERENCES Affiliations(aff_id)
+  FOREIGN KEY (aff_id) REFERENCES Affiliations(aff_id),
+  CONSTRAINT unique_auth_authors UNIQUE (lName, fName, initials, aff_id)
 );
 ```
 
@@ -357,8 +357,8 @@ CREATE TABLE IF NOT EXISTS Authors (
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS AuthorList (
   authList_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  author_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
+  author_id INTEGER NOT NULL,
   FOREIGN KEY (author_id) REFERENCES Authors(author_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_authlist_author_art UNIQUE (author_id, article_id)
@@ -375,7 +375,8 @@ CREATE TABLE IF NOT EXISTS Grants (
   country_id INTEGER NOT NULL,
   FOREIGN KEY (acronym_id) REFERENCES Acronyms(acronym_id),
   FOREIGN KEY (agency_id) REFERENCES Agencies(agency_id),
-  FOREIGN KEY (country_id) REFERENCES Countries(country_id)
+  FOREIGN KEY (country_id) REFERENCES Countries(country_id),
+  CONSTRAINT unique_grant_id UNIQUE (grantID)
 );
 ```
 
@@ -383,8 +384,8 @@ CREATE TABLE IF NOT EXISTS Grants (
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS GrantList (
   grantList_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  grant_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
+  grant_id INTEGER NOT NULL,
   FOREIGN KEY (grant_id) REFERENCES Grants(grant_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_grantlist_grant_art UNIQUE (grant_id, article_id)
@@ -408,8 +409,8 @@ CREATE TABLE IF NOT EXISTS PubMedDate (
 ```{sql connection=conn}
 CREATE TABLE IF NOT EXISTS History (
   history_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  pubMedDate_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
+  pubMedDate_id INTEGER NOT NULL,
   FOREIGN KEY (pubMedDate_id) REFERENCES AbstractText(pubMedDate_id),
   FOREIGN KEY (article_id) REFERENCES Article(article_id),
   CONSTRAINT unique_history_date_art UNIQUE (pubMedDate_id, article_id)
@@ -448,9 +449,19 @@ getVector <- function(path, att){
   return(values)
 }
 
-dfToDatabase <- function(df, tablename){
+addId <- function(df){
   # Add unique ids
-  df_table <- tibble::rowid_to_column(df, "id")
+  df <- tibble::rowid_to_column(df, "id")
+  return(df)
+}
+
+dfToDatabase <- function(df, tablename, needID){
+  if(needID){
+    df_table <- addId(df)
+  }
+  else {
+    df_table <- df
+  }
   
   # Update column names to match table
   names <- dbGetQuery(conn, 
@@ -481,7 +492,7 @@ catTable <- function(path, tablename, att, mult=FALSE){
   
   df_table <- data.frame(values)
   
-  return(dfToDatabase(df_table,tablename))
+  return(dfToDatabase(df_table,tablename, TRUE))
 }
 ```
 
@@ -502,6 +513,10 @@ df_labels <- catTable("//@Label,//@NlmCategory", "CategoryLabels", TRUE, TRUE)
 df_mediums <- catTable("//@IssnType,//@CitedMedium,//@PubModel,//@DateType",
                        "MediumType", TRUE, TRUE)
 ```
+
+The remaining tables need to be processed node by node because of potentially extra or missing nodes. Not all of the tables/attributes will have a 1:1 relationship with the article.
+
+The next few chunks will read the XML into initial dataframes for further manipulation.
 
 ```{r}
 # Function to check for missing values
@@ -572,6 +587,7 @@ histDF <- function(art, node){
 }
 
 # Create an empty dataframe to match dataframe from function
+# History is the linking table between article and PubMedDate
 df_pmDate <- data.frame("article_id"=c(), "status"=c(), 
                       "year"=c(), "month"=c(), "day"=c(), "hour"=c(),
                       "minute"=c())
@@ -591,6 +607,8 @@ for(i in 1:xmlSize(root)){
 ```
 
 ```{r}
+# Function processes the journal XML element
+# Uses the article number for tying back to the original article
 journalDF <- function(num, node){
   issnType <- c()
   issn <- c()
@@ -647,18 +665,6 @@ journalDF <- function(num, node){
       print(paste("Vector not created for:", name))
     }
   }
-  # i<-1
-  # 
-  # # Check for missing values on all vectors
-  # issnType <- checkSize(i,issnType)
-  # issn <- checkSize(i,issn)
-  # medium <- checkSize(i,medium)
-  # volume <- checkSize(i,volume)
-  # issue <- checkSize(i,issue)
-  # med <- checkSize(i,med)
-  # date <- checkSize(i,date)
-  # title <- checkSize(i,title)
-  # iso <- checkSize(i,iso)
   
   journal_df <- data.frame("article_id"=num, issnType, issn, medium, volume, 
                            issue, med, date, title, iso)
@@ -667,6 +673,8 @@ journalDF <- function(num, node){
 ```
 
 ```{r}
+# Function processes the eLocationID XML element
+# Uses the article number for tying back to the original article
 eLocDF <- function(num, node){
   valid <- xmlGetAttr(node,"ValidYN",NA)
   type <- xmlGetAttr(node,"EIdType",NA)
@@ -678,6 +686,8 @@ eLocDF <- function(num, node){
 ```
 
 ```{r}
+# Function processes the abstract XML element
+# Uses the article number for tying back to the original article
 abstractDF <- function(num, node){
   cat <- c()
   lab <- c()
@@ -704,6 +714,8 @@ abstractDF <- function(num, node){
 ```
 
 ```{r}
+# Function processes the authorList XML element
+# Uses the article number for tying back to the original article
 authorDF <- function(num, node){
   valid <- c()
   last <- c()
@@ -748,6 +760,8 @@ authorDF <- function(num, node){
 ```
 
 ```{r}
+# Function processes the publicationTypeList XML element
+# Uses the article number for tying back to the original article
 pubTypeDF <- function(num, node){
   type <- c()
   for(i in 1:xmlSize(node)){
@@ -759,8 +773,10 @@ pubTypeDF <- function(num, node){
 ```
 
 ```{r}
+# Function processes the grantList XML element
+# Uses the article number for tying back to the original article
 grantDF <- function(num, node){
-  id <- c()
+  grantid <- c()
   ac <- c()
   ag <- c()
   ctry <- c()
@@ -771,7 +787,7 @@ grantDF <- function(num, node){
       child <- newNode[[j]]
       name <- xmlName(child)
       if(name == "GrantID"){
-        id <- append(id, xmlValue(child))
+        grantid <- append(grantid, xmlValue(child))
       }
       else if(name == "Acronym"){
         ac <- append(ac, xmlValue(child))
@@ -788,23 +804,25 @@ grantDF <- function(num, node){
     }
     
     # Check for missing values on all vectors
-    id <- checkSize(i,id)
+    grantid <- checkSize(i,grantid)
     ac <- checkSize(i,ac)
     ag <- checkSize(i,ag)
     ctry <- checkSize(i,ctry)
   }
   
-  grant_df <- data.frame("article_id"=num, id, ac, ag, ctry)
+  grant_df <- data.frame("article_id"=num, grantid, ac, ag, ctry)
   return(grant_df)
 }
 ```
 
 ```{r}
+# Function processes the articleDate XML element
+# Uses the article number for tying back to the original article
 artDateDF <- function(num, node){
   type <- xmlGetAttr(node,"DateType",NA)
-  year <- xmlValue(node[[1]])
-  month <- xmlValue(node[[2]])
-  day <- xmlValue(node[[3]])
+  year <- as.numeric(xmlValue(node[[1]]))
+  month <- as.numeric(xmlValue(node[[2]]))
+  day <- as.numeric(xmlValue(node[[3]]))
   
   artDate_df <- data.frame("article_id"=num, type, year, month, day)
   return(artDate_df)
@@ -831,7 +849,7 @@ df_abstract <- data.frame("article_id"=c(), "cat"=c(), "lab"=c(), "text"=c())
 df_author <- data.frame("article_id"=c(), "valid"=c(), "last"=c(),
                         "first"=c(), "init"=c(), "aff"=c())
 df_pubTypeList <- data.frame("article_id"=c(), "type"=c())
-df_grant <- data.frame("article_id"=c(), "id"=c(), "ac"=c(), "ag"=c(),
+df_grant <- data.frame("article_id"=c(), "grantid"=c(), "ac"=c(), "ag"=c(),
                        "ctry"=c())
 df_artDate <- data.frame("article_id"=c(), "type"=c(), "year"=c(),
                          "month"=c(), "day"=c())
@@ -905,14 +923,195 @@ for(i in 1:xmlSize(root)){
   }
 }
 
-df_article <- data.frame(i, title, aListC, gListC, copyright, 
-                         pagination, lang, model)
+df_article <- data.frame(i, model, title, pagination, aListC, lang, 
+                         gListC, copyright)
+```
+
+Now that all of the data has been read, the dataframes should be manipulated to match the tables. Since the dfToDatabase function will rename the columns, the format has to be exact for the data to be added properly.
+
+
+```{r}
+# Replace the applicable categorical attribute with the FK id
+fkReplacement <- function(df_cat, df_list, catCol, listCol, name){
+  # Get a list of the categories available
+  types <- df_cat[,c(0,2)]
+  # For each category, assign the FK id
+  for(term in types) {
+    search1 <- df_cat[,catCol] == term
+    # Get the FK id for the category
+    id <- df_cat[which(search1),][[paste0(name,"_id")]]
+    search2 <- df_list[,listCol] == term
+    # Replace default 0 value with the FK id
+    df_list$update_id[search2] <- id
+  }
+  
+  # Drop the original categorical attribute column
+  df_list[,listCol] <- NULL
+  # Rename the FK id column to match attribute
+  names(df_list)[names(df_list) == "update_id"] <- paste0(name,"_id")
+  
+  return(df_list)
+}
+```
+
+
+```{r, messge=FALSE}
+# Replace FK attributes
+df_article <- fkReplacement(df_mediums,df_article,2,2,"medium")
+df_article <- fkReplacement(df_pgn,df_article,2,3,"pgn")
+df_article <- fkReplacement(df_lang,df_article,2,4,"lang")
+
+# Organize columns into correct order (needed for adding to database)
+df_article <- data.frame(cbind(id, df_article$medium_id,
+                               df_article$title, df_article$pgn_id,
+                               df_article$aListC, df_article$lang_id,
+                               df_article$gListC, df_article$copyright))
+
+# Add the values to the database
+df_article <- dfToDatabase(df_article,"Article",FALSE)
+```
+
+
+```{r}
+# Replace FK attributes
+df_pubTypeList <- fkReplacement(df_pubType,df_pubTypeList,2,2,"pubType")
+# Add the values to the database
+df_pubTypeList <- dfToDatabase(df_pubTypeList,"PubTypeList",TRUE)
+```
+
+
+```{r}
+# Need to add the unique id key so the bridge list can be made
+df_eLoc <- addId(df_eLoc)
+# Bridge list should only have the article and the unique ids
+df_eLocList <- df_eLoc[,c(2,1)]
+colnames(df_eLocList) <- c("art","eLoc")
+
+# Replace FK attributes
+df_eLoc <- fkReplacement(df_eIdType,df_eLoc,2,4,"eType")
+
+# Organize columns into correct order (needed for adding to database)
+df_eLoc <- data.frame(cbind(df_eLoc$id, df_eLoc$eType_id, df_eLoc$valid,
+                            df_eLoc$value))
+
+# Add the values to the database
+df_eLoc <- dfToDatabase(df_eLoc,"ELocationID",FALSE)
+df_eLocList <- dfToDatabase(df_eLocList,"ELocList",TRUE)
+```
+
+
+```{r}
+# Need to add the unique id key so the bridge list can be made
+df_abstract <- addId(df_abstract)
+# Bridge list should only have the article and the unique ids
+df_abstractList <- df_abstract[,c(2,1)]
+colnames(df_abstractList) <- c("art","abstract")
+
+# Replace FK attributes
+df_abstract <- fkReplacement(df_labels,df_abstract,2,3,"label")
+colnames(df_abstract) <- c("id","art","lab","text","cat")
+df_abstract <- fkReplacement(df_labels,df_abstract,2,3,"label")
+
+# Organize columns into correct order (needed for adding to database)
+df_abstract <- data.frame(cbind(df_abstract$id, df_abstract$text,
+                                df_abstract$label_id, df_abstract$cat))
+
+# Add the values to the database
+df_abstract <- dfToDatabase(df_abstract,"AbstractText",FALSE)
+df_abstractList <- dfToDatabase(df_abstractList,"AbstractList",TRUE)
+```
+
+### Need to adjust for multi-column FK search!!!
+```{r}
+# Replace FK attributes
+df_grant <- fkReplacement(df_acr,df_grant,2,3,"acronym")
+df_grant <- fkReplacement(df_agency,df_grant,2,3,"agency")
+df_grant <- fkReplacement(df_country,df_grant,2,3,"country")
+# Copy to bridge list for multi-column FK check
+df_grantList <- df_grant[,c(1,2)]
+
+# Remove unneeded column from authors
+df_grant$article_id <- NULL
+
+# GrantIds should be unique
+df_grant <- unique(df_grant)
+
+# Need to add the unique id key so the bridge list can be updated
+df_grant <- addId(df_grant)
+colnames(df_grant) <- c("grantid_id","grantid","ac","ag","ctry")
+
+# Replace FK attributes in bridge list
+df_grantList <- fkReplacement(df_grant,df_grantList,2,2,"grantid")
+df_grantList <- unique(df_grantList)
+
+# Add the values to the database
+df_grant <- dfToDatabase(df_grant,"Grants",FALSE)
+df_grantList <- dfToDatabase(df_grantList,"GrantList",TRUE)
+```
+
+### Need to adjust for multi-column FK search!!!
+```{r}
+# Replace FK attributes
+df_author <- fkReplacement(df_aff,df_author,2,6,"aff")
+
+# Copy to bridge list for multi-column FK check
+df_authorList <- df_author
+
+# Remove unneeded column from authors
+df_author$article_id <- NULL
+
+# Authors should be unique
+df_author <- unique(df_author)
+
+# Add the values to the database
+df_author <- dfToDatabase(df_author,"Authors",TRUE)
+df_authorList <- dfToDatabase(df_authorList,"AuthorList",TRUE)
+```
+
+
+```{r}
+# Grab the needed columns
+df_pubDate <- df_journal[,c(7,8)]
+# Keep only unique values
+df_pubDate <- unique(df_pubDate)
+# Add the values to the database
+df_pubDate <- dfToDatabase(df_pubDate,"PubDate",TRUE)
+```
+
+### Need to adjust for multi-column FK search!!!
+```{r}
+# Grab the needed columns
+df_jIssue <- df_journal[,c(4,5,6,7,8)]
+# Replace FK attributes
+df_jIssue <- fkReplacement(df_mediums,df_jIssue,2,1,"medium")
+# Add the values to the database
+df_jIssue <- dfToDatabase(df_jIssue,"JournalIssue",TRUE)
+```
+
+
+```{r}
+# Grab the needed columns
+df_issn <- df_journal[,c(2,3)]
+# Keep only unique values
+df_issn <- unique(df_issn)
+# Replace FK attributes
+df_issn <- fkReplacement(df_mediums,df_issn,2,1,"medium")
+# Add the values to the database
+df_issn <- dfToDatabase(df_issn,"ISSN",TRUE)
 ```
 
 
 
+```{r}
+# The Date table contains data from two tables: ArticleDate and PubMedDate
+df_date <- df_artDate[,c(3,4,5)]
+df_date <- rbind(df_date, df_pmDate[,c(3,4,5)])
 
-
+# Keep only unique values
+df_date <- unique(df_date)
+# Add the values to the database
+df_date <- dfToDatabase(df_date,"Date",TRUE)
+```
 
 
 
