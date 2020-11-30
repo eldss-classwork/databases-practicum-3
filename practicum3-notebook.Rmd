@@ -2,10 +2,10 @@
 title: 'CS5200 Fall 2020: Practicum 3'
 author: "Chandra Davis, Evan Douglass"
 output:
-  pdf_document: default
-  word_document: default
   html_document:
     df_print: paged
+  word_document: default
+  pdf_document: default
 ---
 
 ## Overview
@@ -1229,7 +1229,7 @@ Create and populate a star schema with dimension and transaction fact tables. Ea
 
 Lucidchart link: 
 
-![Task2.1](imgs/'Practicum III Star Schema Full.png')
+![Task2.1](imgs/Practicum III Star Schema Full.png)
 
 ```{r}
 
