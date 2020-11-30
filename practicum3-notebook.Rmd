@@ -418,10 +418,6 @@ CREATE TABLE IF NOT EXISTS History (
 );
 ```
 
-
-
-
-
 ### Task 3
 Extract and transform the data from the XML and then load into the appropriate tables in the database. You cannot use xmlToDataFrame but instead must parse the XML node by node using a combination of node-by-node tree traversal and XPath. It is not feasible to use XPath to extract all journals, then all authors, etc. as some are missing and won't match up. You will need to iterate through the top-level nodes.
 
@@ -1233,7 +1229,7 @@ Create and populate a star schema with dimension and transaction fact tables. Ea
 
 Lucidchart link: 
 
-![Task2.1](imgs/OriginalTables.png)
+![Task2.1](imgs/'Practicum III Star Schema Full.png')
 
 ```{r}
 
