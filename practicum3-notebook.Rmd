@@ -1231,10 +1231,327 @@ Lucidchart link:
 
 ![Task2.1](imgs/Practicum III Star Schema Full.png)
 
-```{r}
+To start, we'll put the OLAP database in a new sqlite file. Below we create the the database and the tables in our schema.
 
+```{r}
+DB_NAME <- "pubMedWarehouse.db"
+
+starConn <- dbConnect(RSQLite::SQLite(), DB_NAME)
 ```
 
+```{r, results="hide"}
+# Since the dataset is small, the database should be re-created at runtime
+drop_table <- function(table_name) {
+    paste("DROP TABLE IF EXISTS ", table_name, ";", sep="")
+}
+
+# Since we are dropping all tables, disable the FK checks
+dbExecute(starConn, "PRAGMA foreign_keys = OFF;")
+# Get a list of all tables currently in the database
+table_list <- dbListTables(starConn)
+# Drop every table in the database
+for(table in table_list){
+  if(!str_contains(table,"sqlite")){
+    dbExecute(starConn, drop_table(table))
+  }
+}
+dbExecute(starConn, "PRAGMA foreign_keys = ON;")
+```
+
+```{sql connection=starConn}
+CREATE TABLE IF NOT EXISTS ArticleDim (
+  articleDim_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  article_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  abstractText TEXT NOT NULL,
+  abstractLabel TEXT,
+  abstractNlmCategory TEXT,
+  abstractCopyright TEXT,
+  authorListComplete BOOLEAN NOT NULL,
+  authorValid BOOLEAN NOT NULL,
+  authorLName TEXT NOT NULL,
+  authorFName TEXT NOT NULL,
+  authorInitials TEXT NOT NULL,
+  authorAffiliation TEXT,
+  medlinePagination TEXT NOT NULL,
+  language TEXT NOT NULL,
+  grantListComplete BOOLEAN,
+  -- Grant info Left Joined below, must be nullable
+  grantID TEXT,
+  grantAcronym TEXT,
+  grantAgency TEXT,
+  grantCountry TEXT,
+  eLocType TEXT NOT NULL,
+  eLocValid BOOLEAN NOT NULL,
+  eLocValue Text NOT NULL
+);
+```
+
+```{sql connection=starConn}
+CREATE TABLE IF NOT EXISTS JournalDim (
+  issue_id INTEGER PRIMARY KEY,
+  title TEXT NOT NULL,
+  issn TEXT NOT NULL,
+  issnMedium TEXT NOT NULL,
+  isoAbbreviation TEXT NOT NULL,
+  volume INTEGER NOT NULL,
+  issue INTEGER NOT NULL,
+  citedMedium TEXT NOT NULL,
+  medlineDate BOOLEAN NOT NULL,
+  pubDate TEXT NOT NULL -- YYMM
+);
+```
+
+```{sql connection=starConn}
+CREATE TABLE IF NOT EXISTS HistoryDim (
+  history_id INTEGER PRIMARY KEY,
+  status TEXT NOT NULL,
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL,
+  day INTEGER NOT NULL,
+  hour INTEGER,
+  minute INTEGER
+);
+```
+
+```{sql connection=starConn}
+CREATE TABLE IF NOT EXISTS PublicationFact (
+  pub_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  article_id INTEGER NOT NULL,
+  issue_id INTEGER NOT NULL,
+  history_id INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  medium TEXT,
+  -- article_id cannot be an FK because it is not unique in the parent table
+  FOREIGN KEY (issue_id) REFERENCES JournalDim(issue_id),
+  FOREIGN KEY (history_id) REFERENCES HistoryDim(history_id)
+);
+```
+
+The next step is to get this data from the transactional database that we already have in place and put it into the new OLAP database.
+
+```{sql connection=conn, output.var='history_dim'}
+SELECT
+  H.history_id,
+  D.year,
+  D.month,
+  D.day,
+  P.status,
+  P.hour,
+  P.minute
+FROM
+  History AS H,
+  Date AS D,
+  PubMedDate AS P
+WHERE
+  H.pubMedDate_id = P.pubMedDate_id AND
+  D.date_id = P.date;
+```
+
+```{sql connection=conn, output.var='journal_dim'}
+SELECT DISTINCT
+  JI.issue_id,
+  J.title,
+  I.value AS issn,
+  I.issnMedium,
+  IA.abbr AS isoAbbreviation,
+  JI.volume,
+  JI.issue,
+  JI.citedMedium,
+  JI.medlineDate,
+  JI.pubDate
+FROM
+  Journal AS J,
+  PubDate AS PD,
+  IsoAbbreviation AS IA,
+  
+  (SELECT
+     I.issn_id,
+     I.value,
+     M.medium AS issnMedium
+   FROM
+     ISSN AS I,
+     MediumType AS M
+   WHERE
+     I.issnType = M.medium_id) AS I,
+     
+  (SELECT
+     JI.issue_id,
+     JI.volume,
+     JI.issue,
+     M.medium AS citedMedium,
+     PD.medlineDate,
+     PD.dateYYMM AS pubDate
+   FROM
+     JournalIssue AS JI,
+     MediumType AS M,
+     PubDate AS PD
+   WHERE
+     JI.citedMedium = M.medium_id AND
+     JI.pubDate_id = PD.pubDate_id) AS JI,
+     
+  IssueList AS IL
+WHERE
+  J.isoAbbr = IA.abbr_id AND
+  J.issn_id = I.issn_id AND
+  J.journal_id = IL.journal_id AND
+  JI.issue_id = IL.issue_id;
+```
+
+```{sql connection=conn, output.var='article_dim'}
+SELECT DISTINCT
+  ArG.article_id,
+  ArG.title,
+  AT.abText AS abstractText,
+  abLab.abstractLabel,
+  nlm.abstractNlmCategory,
+  ArG.copyright AS abstractCopyright,
+  ArG.authorListComplete,
+  Au.valid AS authorValid,
+  Au.lName AS authorLName,
+  Au.fName AS authorFName,
+  Au.initials AS authorInitials,
+  Af.aff AS authorAffiliation,
+  P.medlinePgn AS medlinePagination,
+  L.language,
+  ArG.grantListComplete,
+  ArG.grantID,
+  ArG.acronym AS grantAcronym,
+  ArG.agency AS grantAgency,
+  ArG.country AS grantCountry,
+  ELT.eType AS eLocType,
+  ELI.valid AS eLocValid,
+  ELI.value AS eLocValue
+FROM
+  -- Article needs to be left joined on the grants tables because
+  -- not every article has grant information, but we want to include
+  -- every article.
+  (SELECT *
+   FROM Article
+      LEFT JOIN GrantList USING(article_id)
+      LEFT JOIN Grants USING(grant_id)
+      LEFT JOIN Countries USING(country_id)
+      LEFT JOIN Agencies USING(agency_id)
+      LEFT JOIN Acronyms USING(acronym_id)
+  ) AS ArG,
+  
+  AbstractList AS AL,
+  AbstractText AS AT,
+  -- Need subqueries to get the correct values from CategoryLabels.
+  -- Normal WHERE would only get those with label and nlm as the same.
+  -- label
+  (SELECT 
+    AT.abText_id, CL.label AS abstractLabel
+  FROM
+    AbstractText AS AT, CategoryLabels AS CL 
+  WHERE
+    AT.label = CL.label_id) AS abLab,
+  -- nlmCategory
+  (SELECT 
+    AT.abText_id, CL.label AS abstractNlmCategory
+  FROM
+    AbstractText AS AT, CategoryLabels AS CL 
+  WHERE
+    AT.nlmCategory = CL.label_id) AS nlm,
+  
+  Authors AS Au,
+  AuthorList AS AuL,
+  Affiliations AS Af,
+  Pagination AS P,
+  Languages AS L,
+  ELocList AS ELL,
+  ELocationID AS ELI,
+  ELocType AS ELT
+WHERE 
+  ArG.article_id = AL.abList_id AND
+  AL.abText_id = AT.abText_id AND
+  abLab.abText_id = AT.abText_id AND
+  nlm.abText_id = AT.abText_id AND
+  AuL.article_id = ArG.article_id AND
+  AuL.author_id = Au.author_id AND
+  Af.aff_id = Au.aff_id AND
+  P.pgn_id = ArG.pgn_id AND
+  L.lang_id = ArG.lang_id AND
+  ELL.article_id = ArG.article_id AND
+  ELL.eLoc_id = ELI.eLoc_id AND
+  ELI.eType_id = ELT.eType_id;
+```
+
+```{sql connection=conn, output.var='publication_fact'}
+SELECT
+  Ar.article_id,
+  JI.issue_id,
+  H.history_id,
+  PT.pubType AS type,
+  M.medium
+FROM
+  Article AS Ar,
+  JournalIssue AS JI,
+  History AS H,
+  ArticleList AS AL,
+  PubTypeList AS PTL,
+  PublicationType AS PT,
+  MediumType AS M
+WHERE
+  Ar.article_id = AL.article_id AND
+  AL.issue_id = JI.issue_id AND
+  Ar.article_id = H.article_id AND
+  Ar.article_id = PTL.article_id AND
+  PTL.pubType_id = PT.pubType_id AND
+  Ar.pubModel = M.medium_id;
+```
+
+Let's take a look at the data we just gathered.
+
+```{r}
+head(history_dim)
+```
+
+```{r}
+head(journal_dim)
+```
+
+```{r}
+head(article_dim)
+```
+
+```{r}
+head(publication_fact)
+```
+
+Now they can be inserted into the OLAP database.
+
+```{r}
+# Article dimension table
+dbWriteTable(starConn, "ArticleDim", article_dim, append=TRUE)
+
+# Journal dimension table
+dbWriteTable(starConn, "JournalDim", journal_dim, append=TRUE)
+
+# History dimension table
+dbWriteTable(starConn, "HistoryDim", history_dim, append=TRUE)
+
+# Publication fact table
+dbWriteTable(starConn, "PublicationFact", publication_fact, append=TRUE)
+```
+
+Let's make sure they made it into the database.
+
+```{sql connection=starConn}
+SELECT * FROM ArticleDim LIMIT 5;
+```
+
+```{sql connection=starConn}
+SELECT * FROM JournalDim LIMIT 5;
+```
+
+```{sql connection=starConn}
+SELECT * FROM HistoryDim LIMIT 5;
+```
+
+```{sql connection=starConn}
+SELECT * FROM PublicationFact LIMIT 5;
+```
 
 ### Task 2
 In the same schema as the previous step, create and populate a summary fact table that represents number of articles per time period (quarter, year) by author and by journal. Include the image of an updated ERD that contains the fact table. Populate the fact table in R.
