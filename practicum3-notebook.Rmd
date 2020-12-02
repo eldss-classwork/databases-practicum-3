@@ -2,17 +2,17 @@
 title: 'CS5200 Fall 2020: Practicum 3'
 author: "Chandra Davis, Evan Douglass"
 output:
+  pdf_document: default
+  word_document: default
   html_document:
     df_print: paged
-  word_document: default
-  pdf_document: default
 ---
 
 ## Overview
 
 We've decided to work with SQLite for this practicum. As such, to work with these files you will need SQLite installed on your machine. The data we are using was provided with the practicum
 
-```{r, warning=FALSE}
+```{r, warning=FALSE, message=FALSE}
 # Libraries needed for processing
 library(RSQLite)
 library("XML")
@@ -20,6 +20,7 @@ library(sqldf)
 library(dplyr)
 library(tibble)
 library(sjmisc)
+library(ggplot2)
 ```
 
 
@@ -31,7 +32,7 @@ Create a normalized relational schema that contains minimally the following enti
 
 Lucidchart link: 
 
-![Task1.1](imgs/OriginalTables.png)
+![Task1.1](imgs/CS5200 - Practicum 3 ERD.png)
 
 ### Task 2
 Realize the relational schema in SQLite (place the CREATE TABLE statements into SQL chunks in your R Notebook).
@@ -1227,9 +1228,9 @@ Add to the normalized schema fact tables and turn the normalized schema into a d
 ### Task 1
 Create and populate a star schema with dimension and transaction fact tables. Each row in the fact table will represent one article. Include the image of an updated ERD that contains the fact table and any additional required dimension tables. Populate the star schema in R.
 
-Lucidchart link: 
+Lucidchart diagram: 
 
-![Task2.1](imgs/Practicum III Star Schema Full.png)
+![Task2.1](imgs/StarSchemaERD.png)
 
 To start, we'll put the OLAP database in a new sqlite file. Below we create the the database and the tables in our schema.
 
@@ -1492,7 +1493,7 @@ In the same schema as the previous step, create and populate a summary fact tabl
 
 Lucidchart link: 
 
-![Task2.2](imgs/OriginalTables.png)
+![Task2.2](imgs/StarSchemaERDWithSummary.png)
 
 First we need to make the new tables. We are creating two separate summary tables, one for authors and one for journals, as these are the two entities we are most interested in getting article update statistics from.
 
@@ -1540,7 +1541,7 @@ GROUP BY
   F.author_id, DDim.year, DDim.quarter, DDim.month;
 ```
 
-```{r}
+```{r, warning=FALSE}
 dbWriteTable(starConn, "AuthorFactSummary", auth_sum, append=TRUE)
 ```
 
@@ -1598,67 +1599,220 @@ Write queries using your data warehouse to explore whether the publications show
 
 #### Changes
 
+The star schema and summary tables above were not our first attempt at completing this task. Our first attempt ended poorly, as the design was not good. A copy of the original design for the star schema is below. One of the main problems is that the ArticleDim table was forced to have duplicate article_ids because of the several many-to-one relationships article has with entities such as author, grants and eLocation. This caused unexpected consequences when trying to join by that field while creating summary statistics. After more research on star schema design we decided to take out all of these multi-valued attributes and move Author into it's own entity, among other small changes. This allowed us to ensure each id in each entity was unique.
+
+![Original Schema](imgs/Practicum III Star Schema Full.png)
+
+Another conceptual change that allowed these changes was rethinking our fact table. Originally we had considered an article's publication as the main process we were tracking. However we came to realize that tracking an individual author's publications allowed us to remove the problem of multiple authors on an article. We then further drilled down to provide a fact table of the changes an author's article goes through (its history). This provided us with a little more data to work with for our analyses.
+
 #### Queries
-
-Due to the small amount of data in this data-set (19 articles), we decided it would be more interesting to explore article activity, rather than just the dates they were published in journals. This includes all the different categories included in the `status` field. These are included below as a reference.
-
-```{sql connection=conn}
-SELECT * from PubStatus;
-```
 
 ##### Query 1
 
 How many article actions/activities are recorded per quarter on average by each author?
 
-```{sql, connection=starConn}
+```{sql, connection=starConn, output.var='quarter_auth_avg'}
+SELECT
+  AD.fName || " " || AD.lName AS author,
+  AFS.quarter,
+  AVG(AFS.changeCount) AS average_changes
+FROM
+  AuthorDim AS AD,
+  AuthorFactSummary AS AFS
+WHERE
+  AD.author_id = AFS.author_id
+GROUP BY 
+  AFS.author_id, AFS.quarter;
+```
 
+```{r}
+quarter_auth_avg$quarter <- as.factor(quarter_auth_avg$quarter)
+head(quarter_auth_avg)
 ```
 
 ##### Query 2
 
 How many article actions/activities are recorded per quarter on average by each journal?
 
-```{sql, connection=starConn}
+```{sql, connection=starConn, output.var='quarter_journ_avg'}
+SELECT
+  JFS.journalTitle,
+  JFS.quarter,
+  AVG(JFS.changeCount) AS average_changes
+FROM
+  JournalFactSummary AS JFS
+GROUP BY 
+  JFS.journalTitle, JFS.quarter;
+```
 
+```{r}
+quarter_journ_avg$quarter <- as.factor(quarter_journ_avg$quarter)
+head(quarter_journ_avg)
 ```
 
 ##### Query 3
 
 How many article actions/activities are recorded per year on average by each author?
 
-```{sql, connection=starConn}
+```{sql, connection=starConn, output.var='year_auth_avg'}
+SELECT
+  AD.fName || " " || AD.lName AS author,
+  AFS.year,
+  AVG(AFS.changeCount) AS average_changes
+FROM
+  AuthorDim AS AD,
+  AuthorFactSummary AS AFS
+WHERE
+  AD.author_id = AFS.author_id
+GROUP BY 
+  AFS.author_id, AFS.year;
+```
 
+```{r}
+year_auth_avg$year <- as.factor(year_auth_avg$year)
+head(year_auth_avg)
 ```
 
 ##### Query 4
 
 How many article actions/activities are recorded per year on average by each journal?
 
-```{sql, connection=starConn}
+```{sql, connection=starConn, output.var='year_journ_avg'}
+SELECT
+  JFS.journalTitle,
+  JFS.year,
+  AVG(JFS.changeCount) AS average_changes
+FROM
+  JournalFactSummary AS JFS
+GROUP BY 
+  JFS.journalTitle, JFS.year;
+```
 
+```{r}
+year_journ_avg$year <- as.factor(year_journ_avg$year)
+head(year_journ_avg)
 ```
 
 ##### Query 5
 
 How many article actions/activities are recorded per month on average by each author?
 
-```{sql, connection=starConn}
+```{sql, connection=starConn, output.var='month_auth_avg'}
+SELECT
+  AD.fName || " " || AD.lName AS author,
+  AFS.month,
+  AVG(AFS.changeCount) AS average_changes
+FROM
+  AuthorDim AS AD,
+  AuthorFactSummary AS AFS
+WHERE
+  AD.author_id = AFS.author_id
+GROUP BY 
+  AFS.author_id, AFS.month;
+```
 
+```{r}
+month_auth_avg$month <- as.factor(month_auth_avg$month)
+head(month_auth_avg)
 ```
 
 ##### Query 6
 
 How many article actions/activities are recorded per month on average by each journal?
 
-```{sql, connection=starConn}
+```{sql, connection=starConn, output.var='month_journ_avg'}
+SELECT
+  JFS.journalTitle,
+  JFS.month,
+  AVG(JFS.changeCount) AS average_changes
+FROM
+  JournalFactSummary AS JFS
+GROUP BY 
+  JFS.journalTitle, JFS.month;
+```
 
+```{r}
+month_journ_avg$month <- as.factor(month_journ_avg$month)
+head(month_journ_avg)
 ```
 
 ### Task 2
 Either (a) visualize (graph/plot) the data from the previous step using R to explore seasonality and explain what you found, or (b) build a predictive model to forecast the expected number of publications for a quarter. (Note that we do not cover predictive modeling in this course, so if you do not know this from a prior course, then simply create the visualization.)
 
-```{r}
+We've decided to choose the first option for our submission: visualize the data. We'll plot all the data above moving from year to quarter to month. We'll start with the author data, then show the journal data.
 
+#### By Authors
+
+```{r, fig.height=10}
+ggplot(year_auth_avg, aes(x=year, y=average_changes, fill=author)) +
+  geom_bar(stat="identity", position = 'dodge') +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.5, 
+                                   hjust=1,
+                                   margin = margin(1, 500, 1, 500)),
+        legend.position = 'bottom')
 ```
 
+In this plot we can see that in our data set, there were more authors publishing in earlier years than later ones, and that these authors were generally publishing more in earlier years. The year with the thinnest lines - meaning more authors publishing in that year - was 2012. It also appears that most authors only wrote one article in any given year, however, a good number wrote 2 or 3 in 2011 and 2012.
 
+```{r, fig.height=10}
+ggplot(quarter_auth_avg, aes(x=quarter, y=average_changes, fill=author)) +
+  geom_bar(stat="identity", position = 'dodge') +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.5, 
+                                   hjust=1,
+                                   margin = margin(1, 500, 1, 500)),
+        legend.position = 'bottom')
+```
+
+The distribution of authors is more spread out here, as might be expected of an aggregate over many years. The most striking thing to notice here is that relatively few papers go through any changes in the 2nd quarter of a given year. The other quarters are more even in terms of changes, but it appears as though the most changes occur in the 4th quarter of a year.
+
+```{r, fig.height=10}
+ggplot(month_auth_avg, aes(x=month, y=average_changes, fill=author)) +
+  geom_bar(stat="identity", position = 'dodge') +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.5, 
+                                   hjust=1,
+                                   margin = margin(1, 500, 1, 500)),
+        legend.position = 'bottom')
+```
+
+This follows the patter from before. The end of the year has relatively more changes on an article. Interestingly, March appears to be the month in which the most changes occur for authors on average.
+
+#### By Journals
+
+```{r, fig.height=10}
+ggplot(year_journ_avg, aes(x=year, y=average_changes, fill=journalTitle)) +
+  geom_bar(stat="identity", position = 'dodge') +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.5, 
+                                   hjust=1,
+                                   margin = margin(1, 500, 1, 500)),
+        legend.position = 'bottom')
+```
+
+As with the authors data, there are more journals with articles going though changes in 2012 than any other year. 2011 and 2012 also appear to have the most changes in general. Only a single jornal was involved in article changes in 2014.
+
+```{r, fig.height=10}
+ggplot(quarter_journ_avg, aes(x=quarter, y=average_changes, fill=journalTitle)) +
+  geom_bar(stat="identity", position = 'dodge') +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.5, 
+                                   hjust=1,
+                                   margin = margin(1, 500, 1, 500)),
+        legend.position = 'bottom')
+```
+
+There does not appear to be any distinctive pattern here. Again, the second quarter appears to have the least changes, but that is mostly due to large spikes in other quarters from certain journals.
+
+```{r, fig.height=10}
+ggplot(month_journ_avg, aes(x=month, y=average_changes, fill=journalTitle)) +
+  geom_bar(stat="identity", position = 'dodge') +
+  theme(axis.text.x = element_text(angle = 90, 
+                                   vjust = 0.5, 
+                                   hjust=1,
+                                   margin = margin(1, 500, 1, 500)),
+        legend.position = 'bottom')
+```
+
+This gives a little more interesting information than the previous graph. In terms of average changes, there does seem to be a slight sine wave pattern, with high points in the early spring and fall. However, the number of journals involved in changes seems to get smaller in March, November and December.
