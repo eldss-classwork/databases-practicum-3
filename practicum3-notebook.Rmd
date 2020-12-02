@@ -1260,53 +1260,44 @@ dbExecute(starConn, "PRAGMA foreign_keys = ON;")
 
 ```{sql connection=starConn}
 CREATE TABLE IF NOT EXISTS ArticleDim (
-  articleDim_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  article_id INTEGER NOT NULL,
+  article_id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
-  abstractText TEXT NOT NULL,
-  abstractLabel TEXT,
-  abstractNlmCategory TEXT,
-  abstractCopyright TEXT,
-  authorListComplete BOOLEAN NOT NULL,
-  authorValid BOOLEAN NOT NULL,
-  authorLName TEXT NOT NULL,
-  authorFName TEXT NOT NULL,
-  authorInitials TEXT NOT NULL,
-  authorAffiliation TEXT,
   medlinePagination TEXT NOT NULL,
   language TEXT NOT NULL,
-  grantListComplete BOOLEAN,
-  -- Grant info Left Joined below, must be nullable
-  grantID TEXT,
-  grantAcronym TEXT,
-  grantAgency TEXT,
-  grantCountry TEXT,
-  eLocType TEXT NOT NULL,
-  eLocValid BOOLEAN NOT NULL,
-  eLocValue Text NOT NULL
+  medium TEXT NOT NULL
 );
 ```
 
 ```{sql connection=starConn}
-CREATE TABLE IF NOT EXISTS JournalDim (
+CREATE TABLE IF NOT EXISTS AuthorDim (
+  author_id INTEGER PRIMARY KEY,
+  valid BOOLEAN NOT NULL,
+  lName TEXT NOT NULL,
+  fName TEXT NOT NULL,
+  initials TEXT NOT NULL
+);
+```
+
+```{sql connection=starConn}
+CREATE TABLE IF NOT EXISTS JournalIssueDim (
   issue_id INTEGER PRIMARY KEY,
   title TEXT NOT NULL,
   issn TEXT NOT NULL,
-  issnMedium TEXT NOT NULL,
+  issnMedium TEXT,
   isoAbbreviation TEXT NOT NULL,
   volume INTEGER NOT NULL,
   issue INTEGER NOT NULL,
   citedMedium TEXT NOT NULL,
   medlineDate BOOLEAN NOT NULL,
-  pubDate TEXT NOT NULL -- YYMM
+  pubDate TEXT NOT NULL
 );
 ```
 
 ```{sql connection=starConn}
-CREATE TABLE IF NOT EXISTS HistoryDim (
-  history_id INTEGER PRIMARY KEY,
-  status TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS DateTimeDim (
+  dt_id INTEGER PRIMARY KEY,
   year INTEGER NOT NULL,
+  quarter INTEGER NOT NULL,
   month INTEGER NOT NULL,
   day INTEGER NOT NULL,
   hour INTEGER,
@@ -1315,200 +1306,132 @@ CREATE TABLE IF NOT EXISTS HistoryDim (
 ```
 
 ```{sql connection=starConn}
-CREATE TABLE IF NOT EXISTS PublicationFact (
-  pub_id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS AuthorPublicationHistoryFact (
+  aph_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  author_id INTEGER NOT NULL,
   article_id INTEGER NOT NULL,
   issue_id INTEGER NOT NULL,
-  history_id INTEGER NOT NULL,
-  type TEXT NOT NULL,
-  medium TEXT,
-  -- article_id cannot be an FK because it is not unique in the parent table
-  FOREIGN KEY (issue_id) REFERENCES JournalDim(issue_id),
-  FOREIGN KEY (history_id) REFERENCES HistoryDim(history_id)
+  dt_id INTEGER NOT NULL,
+  pubStatus TEXT NOT NULL,
+  FOREIGN KEY (author_id) REFERENCES AuthorDim(author_id),
+  FOREIGN KEY (article_id) REFERENCES ArticleDim(article_id),
+  FOREIGN KEY (issue_id) REFERENCES JournalIssueDim(issue_id),
+  FOREIGN KEY (dt_id) REFERENCES DateTimeDim(dt_id)
 );
 ```
 
 The next step is to get this data from the transactional database that we already have in place and put it into the new OLAP database.
 
-```{sql connection=conn, output.var='history_dim'}
+_Author_
+
+```{sql connection=conn, output.var='author_dim'}
 SELECT
-  H.history_id,
-  D.year,
-  D.month,
-  D.day,
-  P.status,
-  P.hour,
-  P.minute
+  author_id, valid, lName, fName, initials
 FROM
-  History AS H,
-  Date AS D,
-  PubMedDate AS P
-WHERE
-  H.pubMedDate_id = P.pubMedDate_id AND
-  D.date_id = P.date;
+  Authors;
 ```
 
-```{sql connection=conn, output.var='journal_dim'}
-SELECT DISTINCT
-  JI.issue_id,
-  J.title,
-  I.value AS issn,
-  I.issnMedium,
-  IA.abbr AS isoAbbreviation,
-  JI.volume,
-  JI.issue,
-  JI.citedMedium,
-  JI.medlineDate,
-  JI.pubDate
-FROM
-  Journal AS J,
-  PubDate AS PD,
-  IsoAbbreviation AS IA,
-  
-  (SELECT
-     I.issn_id,
-     I.value,
-     M.medium AS issnMedium
-   FROM
-     ISSN AS I,
-     MediumType AS M
-   WHERE
-     I.issnType = M.medium_id) AS I,
-     
-  (SELECT
-     JI.issue_id,
-     JI.volume,
-     JI.issue,
-     M.medium AS citedMedium,
-     PD.medlineDate,
-     PD.dateYYMM AS pubDate
-   FROM
-     JournalIssue AS JI,
-     MediumType AS M,
-     PubDate AS PD
-   WHERE
-     JI.citedMedium = M.medium_id AND
-     JI.pubDate_id = PD.pubDate_id) AS JI,
-     
-  IssueList AS IL
-WHERE
-  J.isoAbbr = IA.abbr_id AND
-  J.issn_id = I.issn_id AND
-  J.journal_id = IL.journal_id AND
-  JI.issue_id = IL.issue_id;
-```
+_Article_
 
 ```{sql connection=conn, output.var='article_dim'}
 SELECT DISTINCT
-  ArG.article_id,
-  ArG.title,
-  AT.abText AS abstractText,
-  abLab.abstractLabel,
-  nlm.abstractNlmCategory,
-  ArG.copyright AS abstractCopyright,
-  ArG.authorListComplete,
-  Au.valid AS authorValid,
-  Au.lName AS authorLName,
-  Au.fName AS authorFName,
-  Au.initials AS authorInitials,
-  Af.aff AS authorAffiliation,
+  A.article_id,
+  A.title,
   P.medlinePgn AS medlinePagination,
   L.language,
-  ArG.grantListComplete,
-  ArG.grantID,
-  ArG.acronym AS grantAcronym,
-  ArG.agency AS grantAgency,
-  ArG.country AS grantCountry,
-  ELT.eType AS eLocType,
-  ELI.valid AS eLocValid,
-  ELI.value AS eLocValue
-FROM
-  -- Article needs to be left joined on the grants tables because
-  -- not every article has grant information, but we want to include
-  -- every article.
-  (SELECT *
-   FROM Article
-      LEFT JOIN GrantList USING(article_id)
-      LEFT JOIN Grants USING(grant_id)
-      LEFT JOIN Countries USING(country_id)
-      LEFT JOIN Agencies USING(agency_id)
-      LEFT JOIN Acronyms USING(acronym_id)
-  ) AS ArG,
-  
-  AbstractList AS AL,
-  AbstractText AS AT,
-  -- Need subqueries to get the correct values from CategoryLabels.
-  -- Normal WHERE would only get those with label and nlm as the same.
-  -- label
-  (SELECT 
-    AT.abText_id, CL.label AS abstractLabel
-  FROM
-    AbstractText AS AT, CategoryLabels AS CL 
-  WHERE
-    AT.label = CL.label_id) AS abLab,
-  -- nlmCategory
-  (SELECT 
-    AT.abText_id, CL.label AS abstractNlmCategory
-  FROM
-    AbstractText AS AT, CategoryLabels AS CL 
-  WHERE
-    AT.nlmCategory = CL.label_id) AS nlm,
-  
-  Authors AS Au,
-  AuthorList AS AuL,
-  Affiliations AS Af,
-  Pagination AS P,
-  Languages AS L,
-  ELocList AS ELL,
-  ELocationID AS ELI,
-  ELocType AS ELT
-WHERE 
-  ArG.article_id = AL.abList_id AND
-  AL.abText_id = AT.abText_id AND
-  abLab.abText_id = AT.abText_id AND
-  nlm.abText_id = AT.abText_id AND
-  AuL.article_id = ArG.article_id AND
-  AuL.author_id = Au.author_id AND
-  Af.aff_id = Au.aff_id AND
-  P.pgn_id = ArG.pgn_id AND
-  L.lang_id = ArG.lang_id AND
-  ELL.article_id = ArG.article_id AND
-  ELL.eLoc_id = ELI.eLoc_id AND
-  ELI.eType_id = ELT.eType_id;
-```
-
-```{sql connection=conn, output.var='publication_fact'}
-SELECT
-  Ar.article_id,
-  JI.issue_id,
-  H.history_id,
-  PT.pubType AS type,
   M.medium
 FROM
-  Article AS Ar,
-  JournalIssue AS JI,
-  History AS H,
-  ArticleList AS AL,
-  PubTypeList AS PTL,
-  PublicationType AS PT,
+  Article AS A,
+  Pagination AS P,
+  Languages AS L,
   MediumType AS M
 WHERE
-  Ar.article_id = AL.article_id AND
-  AL.issue_id = JI.issue_id AND
-  Ar.article_id = H.article_id AND
-  Ar.article_id = PTL.article_id AND
-  PTL.pubType_id = PT.pubType_id AND
-  Ar.pubModel = M.medium_id;
+  A.pgn_id = P.pgn_id AND
+  A.lang_id = L.lang_id AND
+  A.pubModel = M.medium_id;
+```
+
+_JournalIssue_
+
+```{sql connection=conn, output.var='journalissue_dim'}
+SELECT
+  JI.issue_id,
+  J.title,
+  I.value AS issn,
+  IA.abbr AS isoAbbreviation,
+  JI.volume,
+  JI.issue,
+  M.medium AS citedMedium,
+  PD.medlineDate,
+  PD.dateYYMM AS pubDate
+FROM
+  JournalIssue AS JI,
+  Journal AS J,
+  ISSN AS I,
+  IsoAbbreviation AS IA,
+  IssueList AS IL,
+  MediumType AS M,
+  PubDate AS PD
+WHERE 
+  IL.issue_id = JI.issue_id AND
+  IL.journal_id = J.journal_id AND
+  J.issn_id = I.issn_id AND
+  J.isoAbbr = IA.abbr_id AND
+  JI.citedMedium = M.medium_id AND
+  JI.pubDate_id = PD.pubDate_id;
+```
+
+_DateTime_
+
+```{sql connection=conn, output.var='datetime_dim'}
+SELECT
+  PMD.pubMedDate_id AS dt_id,
+  D.year,
+  CASE
+    WHEN D.month < 4 THEN 1
+    WHEN D.month < 7 THEN 2
+    WHEN D.month < 10 THEN 3
+    ELSE 4
+  END AS quarter,
+  D.month,
+  D.day,
+  PMD.hour,
+  PMD.minute
+FROM
+  PubMedDate AS PMD,
+  Date AS D
+WHERE
+  PMD.date = D.date_id;
+```
+
+_Fact_
+
+```{sql connection=conn, output.var='fact'}
+SELECT DISTINCT
+  AL.author_id,
+  AL.article_id,
+  ArtL.issue_id,
+  PMD.pubMedDate_id AS dt_id,
+  PS.status AS pubStatus
+FROM
+  AuthorList AS AL,
+  History AS H,
+  PubMedDate AS PMD,
+  PubStatus AS PS,
+  ArticleList AS ArtL,
+  Article AS A
+WHERE
+  AL.article_id = A.article_id AND
+  A.article_id = H.article_id AND
+  H.pubMedDate_id = PMD.pubMedDate_id AND
+  PMD.status = PS.status_id AND
+  A.article_id = ArtL.article_id;
 ```
 
 Let's take a look at the data we just gathered.
 
 ```{r}
-head(history_dim)
-```
-
-```{r}
-head(journal_dim)
+head(author_dim)
 ```
 
 ```{r}
@@ -1516,41 +1439,52 @@ head(article_dim)
 ```
 
 ```{r}
-head(publication_fact)
+head(journalissue_dim)
+```
+
+```{r}
+head(datetime_dim)
+```
+
+```{r}
+head(fact)
 ```
 
 Now they can be inserted into the OLAP database.
 
 ```{r}
+# Author dimension table
+dbWriteTable(starConn, "AuthorDim", author_dim, append=TRUE)
+
 # Article dimension table
 dbWriteTable(starConn, "ArticleDim", article_dim, append=TRUE)
 
 # Journal dimension table
-dbWriteTable(starConn, "JournalDim", journal_dim, append=TRUE)
+dbWriteTable(starConn, "JournalIssueDim", journalissue_dim, append=TRUE)
 
-# History dimension table
-dbWriteTable(starConn, "HistoryDim", history_dim, append=TRUE)
+# DateTime dimension table
+dbWriteTable(starConn, "DateTimeDim", datetime_dim, append=TRUE)
 
 # Publication fact table
-dbWriteTable(starConn, "PublicationFact", publication_fact, append=TRUE)
+dbWriteTable(starConn, "AuthorPublicationHistoryFact", fact, append=TRUE)
 ```
 
 Let's make sure they made it into the database.
+
+```{sql connection=starConn}
+SELECT * FROM AuthorDim LIMIT 5;
+```
 
 ```{sql connection=starConn}
 SELECT * FROM ArticleDim LIMIT 5;
 ```
 
 ```{sql connection=starConn}
-SELECT * FROM JournalDim LIMIT 5;
+SELECT * FROM JournalIssueDim LIMIT 5;
 ```
 
 ```{sql connection=starConn}
-SELECT * FROM HistoryDim LIMIT 5;
-```
-
-```{sql connection=starConn}
-SELECT * FROM PublicationFact LIMIT 5;
+SELECT * FROM AuthorPublicationHistoryFact LIMIT 5;
 ```
 
 ### Task 2
@@ -1560,10 +1494,101 @@ Lucidchart link:
 
 ![Task2.2](imgs/OriginalTables.png)
 
-```{r}
+First we need to make the new tables. We are creating two separate summary tables, one for authors and one for journals, as these are the two entities we are most interested in getting article update statistics from.
 
+```{sql connection=starConn}
+-- These will have been dropped on database creation above when run more than once
+CREATE TABLE IF NOT EXISTS AuthorFactSummary (
+  sum_id INTEGER PRIMARY KEY,
+  author_id INTEGER NOT NULL,
+  year INTEGER,
+  quarter INTEGER,
+  month INTEGER,
+  changeCount INTEGER,
+  FOREIGN KEY (author_id) REFERENCES AuthorDim(author_id)
+);
 ```
 
+```{sql connection=starConn}
+CREATE TABLE IF NOT EXISTS JournalFactSummary (
+  sum_id INTEGER PRIMARY KEY,
+  journalTitle TEXT NOT NULL,
+  year INTEGER,
+  quarter INTEGER,
+  month INTEGER,
+  changeCount INTEGER
+);
+```
+
+Then we can gather the initial stats and update them. In the future, if data is added, a trigger could be used to update these as information is entered. Alternatively, bulk updates could run as bulk data is added during off-hours.
+
+_Author Summary_
+
+```{sql connection=starConn, output.var='auth_sum'}
+SELECT
+  F.author_id,
+  DDim.year,
+  DDim.quarter,
+  DDim.month,
+  COUNT(F.article_id) AS changeCount
+FROM
+  AuthorPublicationHistoryFact AS F,
+  DateTimeDim AS DDim
+WHERE
+  F.dt_id = DDim.dt_id
+GROUP BY
+  F.author_id, DDim.year, DDim.quarter, DDim.month;
+```
+
+```{r}
+dbWriteTable(starConn, "AuthorFactSummary", auth_sum, append=TRUE)
+```
+
+```{sql connection=starConn}
+SELECT * FROM AuthorFactSummary LIMIT 8;
+```
+
+_Journal Summary_
+
+```{sql connection=starConn, output.var='journal_sum'}
+SELECT
+  JDim.title AS journalTitle,
+  DDim.year,
+  DDim.quarter,
+  DDim.month,
+  COUNT(F.article_id) AS changeCount
+FROM
+  AuthorPublicationHistoryFact AS F,
+  DateTimeDim AS DDim,
+  JournalIssueDim AS JDim
+WHERE
+  F.dt_id = DDim.dt_id AND
+  F.issue_id = JDim.issue_id
+GROUP BY
+  JDim.title, DDim.year, DDim.quarter, DDim.month;
+```
+
+```{r}
+dbWriteTable(starConn, "JournalFactSummary", journal_sum, append=TRUE)
+```
+
+```{sql connection=starConn}
+SELECT * FROM JournalFactSummary LIMIT 8;
+```
+
+Before moving on, lets do a quick sanity check to make sure the summary tables are correct. The sum of all change counts in each summary table should equal the total number of entries in the main fact table, as each record in that table is a change.
+
+```{sql connection=starConn}
+SELECT COUNT(*) as "Total Change Count" FROM AuthorPublicationHistoryFact;
+```
+
+```{sql connection=starConn}
+SELECT SUM(changeCount) FROM AuthorFactSummary;
+```
+
+```{sql connection=starConn}
+SELECT SUM(changeCount) FROM JournalFactSummary;
+```
 
 ## Part 3
 Use the OLAP star schema to do some (simple) data mining.
@@ -1571,10 +1596,63 @@ Use the OLAP star schema to do some (simple) data mining.
 ### Task 1
 Write queries using your data warehouse to explore whether the publications show a seasonal pattern. Look beyond the pattern of number of publications per season. Adjust your fact tables as needed to support your new queries. If you need to update the fact table, document your changes and your reasons why the changes are needed.
 
-```{r}
+#### Changes
+
+#### Queries
+
+Due to the small amount of data in this data-set (19 articles), we decided it would be more interesting to explore article activity, rather than just the dates they were published in journals. This includes all the different categories included in the `status` field. These are included below as a reference.
+
+```{sql connection=conn}
+SELECT * from PubStatus;
+```
+
+##### Query 1
+
+How many article actions/activities are recorded per quarter on average by each author?
+
+```{sql, connection=starConn}
 
 ```
 
+##### Query 2
+
+How many article actions/activities are recorded per quarter on average by each journal?
+
+```{sql, connection=starConn}
+
+```
+
+##### Query 3
+
+How many article actions/activities are recorded per year on average by each author?
+
+```{sql, connection=starConn}
+
+```
+
+##### Query 4
+
+How many article actions/activities are recorded per year on average by each journal?
+
+```{sql, connection=starConn}
+
+```
+
+##### Query 5
+
+How many article actions/activities are recorded per month on average by each author?
+
+```{sql, connection=starConn}
+
+```
+
+##### Query 6
+
+How many article actions/activities are recorded per month on average by each journal?
+
+```{sql, connection=starConn}
+
+```
 
 ### Task 2
 Either (a) visualize (graph/plot) the data from the previous step using R to explore seasonality and explain what you found, or (b) build a predictive model to forecast the expected number of publications for a quarter. (Note that we do not cover predictive modeling in this course, so if you do not know this from a prior course, then simply create the visualization.)
