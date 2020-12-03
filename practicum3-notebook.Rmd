@@ -21,6 +21,9 @@ library(dplyr)
 library(tibble)
 library(sjmisc)
 library(ggplot2)
+
+# Set to False if you do not want to print the top 5 from each table in the transactional database
+printHead = TRUE
 ```
 
 
@@ -1221,6 +1224,62 @@ df_history <- sqldf("select article_id, pubMedDate_id
 df_history <- dfToDatabase(df_history,"History",TRUE)
 ```
 
+#### COnfirm the data loaded to the database
+
+```{r}
+headSql <- function(tableName) {
+  msg <- paste("Top 5 rows for the", tableName, "table")
+  print(msg)
+  sql <- paste("SELECT * FROM", tableName, "LIMIT 5;")
+  print(dbGetQuery(conn, sql))
+}
+```
+
+
+
+```{r}
+tableNames <- c(
+  "ELocType",
+  "CategoryLabels",
+  "Affiliations",
+  "Pagination",
+  "Languages",
+  "IsoAbbreviation",
+  "MediumType",
+  "Countries",
+  "Agencies",
+  "Acronyms",
+  "PublicationType",
+  "PubStatus",
+  "Date",
+  "Article",
+  "ArticleDate",
+  "PubTypeList",
+  "ELocationID",
+  "ELocList",
+  "PubDate",
+  "JournalIssue",
+  "ArticleList",
+  "ISSN",
+  "Journal",
+  "IssueList",
+  "AbstractText",
+  "AbstractList",
+  "Authors",
+  "AuthorList",
+  "Grants",
+  "GrantList",
+  "PubMedDate",
+  "History"
+)
+
+if(printHead){
+  for (name in tableNames) {
+    headSql(name)
+  }
+}
+```
+
 
 ## Part 2
 Add to the normalized schema fact tables and turn the normalized schema into a de-normalized schema suitable for OLAP.
@@ -1791,7 +1850,7 @@ ggplot(year_journ_avg, aes(x=year, y=average_changes, fill=journalTitle)) +
         legend.position = 'bottom')
 ```
 
-As with the authors data, there are more journals with articles going though changes in 2012 than any other year. 2011 and 2012 also appear to have the most changes in general. Only a single jornal was involved in article changes in 2014.
+As with the authors data, there are more journals with articles going though changes in 2012 than any other year. 2011 and 2012 also appear to have the most changes in general. Only a single journal was involved in article changes in 2014.
 
 ```{r, fig.height=10}
 ggplot(quarter_journ_avg, aes(x=quarter, y=average_changes, fill=journalTitle)) +
